@@ -54,37 +54,47 @@ QString RpnStackModel::toSuperscript(int n)
 
 QString RpnStackModel::formatValue(double v) const
 {
-    if (!std::isfinite(v))
-        return QStringLiteral("NaN");
-
-    if (v == 0.0)
-        return QStringLiteral("0");
+    if (!std::isfinite(v)) return QStringLiteral("NaN");
+    if (v == 0.0) return QStringLiteral("0");
 
     const double absV = std::abs(v);
 
+    // Pomocnicza lambda do czyszczenia zer: "123.4500" -> "123.45", "100.0" -> "100"
+    auto cleanZeros = [](QString s) -> QString {
+        if (s.contains('.')) { // Tylko jeśli jest kropka
+            while (s.endsWith('0')) s.chop(1);
+            if (s.endsWith('.')) s.chop(1);
+        }
+        return s;
+    };
+
     switch (m_mode) {
-    case Scientific: {
-        int exp = static_cast<int>(std::floor(std::log10(absV)));
-        double mant = v / std::pow(10.0, exp);
+        case Scientific: {
+            int exp = static_cast<int>(std::floor(std::log10(absV)));
+            double mant = v / std::pow(10.0, exp);
 
-        // m_precision = cyfry znaczące
-        const QString mantStr = QString::number(mant, 'g', m_precision);
-        return QString("%1 * 10^%2").arg(mantStr).arg(exp);
-    }
+            // Używamy 'f' z zadaną precyzją, a potem czyścimy
+            QString mantStr = cleanZeros(QString::number(mant, 'f', m_precision));
+        
+            // Klasyczny zapis bez udziwnień
+            return QString("%1 * 10^%2").arg(mantStr).arg(exp);
+        }
 
-    case Engineering: {
-        int exp = static_cast<int>(std::floor(std::log10(absV)));
-        exp = (exp / 3) * 3;
-        double mant = v / std::pow(10.0, exp);
+        case Engineering: {
+            int exp = static_cast<int>(std::floor(std::log10(absV)));
+            exp = (exp / 3) * 3;
+            double mant = v / std::pow(10.0, exp);
 
-        const QString mantStr = QString::number(mant, 'g', m_precision);
-        return QString("%1 * 10^%2").arg(mantStr).arg(exp);
-    }
+            QString mantStr = cleanZeros(QString::number(mant, 'f', m_precision));
+            return QString("%1 * 10^%2").arg(mantStr).arg(exp);
+        }
 
-    case Simple:
-    default:
-        // zwykły zapis, bez wymuszonych zer
-        return QString::number(v, 'g', 15);
+        case Simple:
+        default:
+            // Tutaj 'g' sprawdza się dobrze (sam usuwa zera), 
+            // ale jeśli wolisz spójność, też można użyć cleanZeros + 'f'.
+            // Zostawmy 'g' z dużą precyzją, bo to tryb "zwykły".
+            return QString::number(v, 'g', 15);
     }
 }
 
@@ -215,41 +225,57 @@ bool RpnStackModel::moveDown(int row)
     return true;
 }
 
+double RpnStackModel::parseInput(const QString &text, bool *ok)
+{
+    QString t = text.trimmed();
+    if (t.isEmpty()) {
+        if (ok) *ok = false;
+        return 0.0;
+    }
+
+    // Ujednolicenia (przecinki, spacje)
+    t.replace(',', '.');
+    t.remove(' ');
+
+    double v = 0.0;
+    bool status = false;
+
+    // 1. Sprawdź format naukowy a*10^b (np. 3.2*10^5)
+    // Szukamy "*10^"
+    const int splitIdx = t.indexOf("*10^");
+    
+    if (splitIdx > 0) {
+        const QString aStr = t.left(splitIdx);
+        const QString bStr = t.mid(splitIdx + 4); // długość "*10^" to 4
+
+        bool okA = false, okB = false;
+        const double a = QLocale::c().toDouble(aStr, &okA);
+        const int b = bStr.toInt(&okB);
+
+        if (okA && okB) {
+            v = a * std::pow(10.0, b);
+            status = std::isfinite(v);
+        }
+    } else {
+        // 2. Standardowe parsowanie (np. 3.2e5 lub 123.45)
+        v = QLocale::c().toDouble(t, &status);
+        if (status) {
+            status = std::isfinite(v);
+        }
+    }
+
+    if (ok) *ok = status;
+    return status ? v : 0.0;
+}
+
+// --- ZMODYFIKOWANA METODA ---
 bool RpnStackModel::setValueAt(int row, const QString &text)
 {
     if (row < 0 || row >= m_stack.size())
         return false;
 
-    QString t = text.trimmed();
-    if (t.isEmpty())
-        return false;
-
-    // ujednolicenia
-    t.replace(',', '.');
-    t.remove(' ');
-
     bool ok = false;
-    double v = 0.0;
-
-    // Obsługa formatu: a*10^b  (np. 3.2*10^5)
-    const int star = t.indexOf('*');
-    const int ten = t.indexOf("10^");
-    if (star > 0 && ten > star) {
-        const QString aStr = t.left(star);
-        const QString bStr = t.mid(ten + 3); // po "10^"
-
-        bool okA=false, okB=false;
-        const double a = QLocale::c().toDouble(aStr, &okA);
-        const int b = bStr.toInt(&okB);
-
-        if (!okA || !okB) return false;
-        v = a * std::pow(10.0, b);
-        ok = std::isfinite(v);
-    } else {
-        // Obsługa: 3.2e5 / zwykła liczba
-        v = QLocale::c().toDouble(t, &ok);
-        ok = ok && std::isfinite(v);
-    }
+    double v = parseInput(text, &ok); // Używamy nowej funkcji
 
     if (!ok) return false;
 

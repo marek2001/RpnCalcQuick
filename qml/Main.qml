@@ -3,6 +3,12 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import RpnCalc.Backend 1.0
 import Qt.labs.platform as Native
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import QtQml // <--- DODAJ TO dla Instantiator
+import RpnCalc.Backend 1.0
+import Qt.labs.platform as Native
 
 ApplicationWindow {
     id: win
@@ -50,15 +56,31 @@ ApplicationWindow {
         }
 
         Native.Menu {
+            id: precisionMenu
             title: "Precision"
-            Native.MenuItemGroup { id: precGroup; exclusive: true }
 
-            Native.MenuItem { text: "2"; checkable: true; checked: rpn.precision === 2; group: precGroup; onTriggered: rpn.precision = 2 }
-            Native.MenuItem { text: "3"; checkable: true; checked: rpn.precision === 3; group: precGroup; onTriggered: rpn.precision = 3 }
-            Native.MenuItem { text: "6"; checkable: true; checked: rpn.precision === 6; group: precGroup; onTriggered: rpn.precision = 6 }
-            Native.MenuItem { text: "9"; checkable: true; checked: rpn.precision === 9; group: precGroup; onTriggered: rpn.precision = 9 }
+            Native.MenuItemGroup {
+                id: precGroup
+                exclusive: true
+            }
+
+            // Instantiator dynamicznie tworzy obiekty MenuItem
+            Instantiator {
+                model: 16 // Generuje liczby od 0 do 15
+
+                delegate: Native.MenuItem {
+                    text: model.index.toString()
+                    checkable: true
+                    checked: rpn.precision === model.index
+                    group: precGroup
+                    onTriggered: rpn.precision = model.index
+                }
+
+                // Ważne: musimy ręcznie dodać stworzone elementy do menu
+                onObjectAdded: (index, object) => precisionMenu.insertItem(index, object)
+                onObjectRemoved: (index, object) => precisionMenu.removeItem(object)
+            }
         }
-
         Native.Menu {
             title: "History"
             Native.MenuItem {

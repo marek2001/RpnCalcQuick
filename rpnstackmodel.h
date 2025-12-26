@@ -41,6 +41,8 @@ public:
     Q_INVOKABLE bool moveDown(int row);
     Q_INVOKABLE bool setValueAt(int row, const QString &text);
 
+    static double parseInput(const QString &text, bool *ok = nullptr);
+    
     // formatting
     void setNumberFormat(int mode, int precision);
 

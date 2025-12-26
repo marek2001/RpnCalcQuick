@@ -53,25 +53,40 @@ bool RpnEngine::pop2(double &a, double &b)
     return true;
 }
 
+// [plik: rpnengine.cpp]
+
+// ...
+
 bool RpnEngine::enter(const QString &text)
 {
+    // STARA WERSJA (do usunięcia/zastąpienia):
+    /*
     QString t = text.trimmed();
     if (t.isEmpty()) return false;
-
-    // pozwól użytkownikowi wpisać "1,23"
     t.replace(',', '.');
-
     bool ok = false;
     const double v = QLocale::c().toDouble(t, &ok);
-    if (!ok || !std::isfinite(v)) {
-        error("Nieprawidłowa liczba.");
+    */
+
+    // NOWA WERSJA:
+    bool ok = false;
+    const double v = RpnStackModel::parseInput(text, &ok);
+
+    if (!ok) {
+        // Pusty ciąg ignorujemy (false, ale bez błędu), 
+        // błędny ciąg zgłaszamy jako error.
+        if (!text.trimmed().isEmpty()) {
+            error("Nieprawidłowa liczba.");
+        }
         return false;
     }
 
     m_model.push(v);
-    appendHistoryLine(QString("push %1").arg(t));
+    appendHistoryLine(QString("push %1").arg(text.trimmed())); // logujemy to co wpisał użytkownik
     return true;
 }
+
+// ...
 
 // ----- BINARNE -----
 

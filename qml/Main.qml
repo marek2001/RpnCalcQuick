@@ -337,17 +337,13 @@ ApplicationWindow {
 
                         highlightFollowsCurrentItem: true
                         highlightMoveDuration: 60
-                        highlight: Rectangle {
-                            color: stackFrame.palette.highlight
-                            opacity: 0.55
-                        }
 
                         delegate: Item {
                             id: rowItem
                             width: stackList.width
                             height: stackList.rowHeight
                             property bool editing: false
-
+                            
                             Rectangle { anchors.fill: parent; color: stackFrame.palette.base }
                             Rectangle {
                                 anchors.left: parent.left
@@ -369,32 +365,71 @@ ApplicationWindow {
                                 }
                             }
 
-                            // numer
+                            // Właściwość pomocnicza sprawdzająca czy ten wiersz jest wybrany
+                            readonly property bool isSelected: ListView.isCurrentItem
+
+                            // TŁO WIERSZA
+                            Rectangle {
+                                anchors.fill: parent
+                                // Jeśli wybrany -> kolor podświetlenia (highlight), jeśli nie -> kolor bazowy (base)
+                                color: rowItem.isSelected ? stackFrame.palette.highlight : stackFrame.palette.base
+
+                                // Opcjonalnie: lekka przezroczystość, jeśli kolor podświetlenia jest zbyt intensywny
+                                // opacity: rowItem.isSelected ? 0.7 : 1.0 
+                            }
+
+                            // 1. NUMER INDEKSU
                             Text {
                                 id: idxText
                                 anchors.left: parent.left
                                 anchors.leftMargin: 12
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: (index + 1).toString()
-                                color: stackFrame.palette.text
+
+                                // Pamiętaj o kolorze z poprzedniego kroku (podświetlenie)
+                                color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.text
                                 font.family: "Monospace"
                             }
 
-                            // WARTOŚĆ (tryb podglądu)
-                            Text {
-                                id: valueText
+                            // 2. NOWOŚĆ: PIONOWA LINIA ROZDZIELAJĄCA
+                            Rectangle {
+                                id: vSep
+                                width: 1
+
+                                // Ustawiamy linię obok indeksu z odstępem
                                 anchors.left: idxText.right
                                 anchors.leftMargin: 12
+
+                                // Rozciągamy linię góra-dół z małym marginesem (żeby nie dotykała krawędzi)
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                anchors.topMargin: 4
+                                anchors.bottomMargin: 4
+
+                                // Kolor linii (dopasowany do ramki, lub jaśniejszy na podświetleniu)
+                                color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.mid
+                                opacity: 0.5 // Lekka przezroczystość, żeby linia nie była zbyt agresywna
+                            }
+
+                            // 3. WARTOŚĆ (zaktualizowane zakotwiczenie)
+                            Text {
+                                id: valueText
+
+                                // ZMIANA: Teraz przyklejamy się do linii (vSep), a nie do idxText
+                                anchors.left: vSep.right
+                                anchors.leftMargin: 12
+
                                 anchors.right: removeBtn.left
                                 anchors.rightMargin: 12
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: model.value
                                 visible: !rowItem.editing
-                                color: stackFrame.palette.text
+
+                                // Kolor z poprzedniego kroku
+                                color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.text
                                 font.family: "Monospace"
                                 elide: Text.ElideLeft
                             }
-
                             // Dwuklik na wartość -> edycja
                             MouseArea {
                                 anchors.fill: valueText

@@ -18,9 +18,17 @@ ApplicationWindow {
     maximumWidth: 800
     maximumHeight: 1200
 
-    // Systemowy kolor akcentu (KDE/Qt style -> highlight)
+    // System accent color (works reliably)
     readonly property color accentColor: win.palette.highlight
 
+    // Keep focus on whichever control had it before (e.g., keypad button)
+    function keepFocus(doWork) {
+        const prev = win.activeFocusItem
+        doWork()
+        // If work moved focus to input but we came from somewhere else, restore
+        if (prev && prev !== input && win.activeFocusItem === input)
+            prev.forceActiveFocus()
+    }
 
     // ===== Global Menu (KDE Plasma) =====
     Native.MenuBar {
@@ -87,30 +95,36 @@ ApplicationWindow {
     function autoEnterIfNeeded() {
         const t = input.text.trim()
         if (t.length > 0) {
-            if (rpn.enter(t)) input.text = ""
+            if (rpn.enter(t))
+                input.text = ""
         }
     }
 
     function op(fn) {
-        autoEnterIfNeeded()
-        fn()
+        keepFocus(() => {
+            autoEnterIfNeeded()
+            fn()
+        })
     }
 
     function appendChar(s) {
-        input.text = input.text + s
-        input.forceActiveFocus()
+        keepFocus(() => {
+            input.text = input.text + s
+        })
     }
 
     function backspace() {
-        if (input.text.length > 0)
-            input.text = input.text.slice(0, input.text.length - 1)
-        input.forceActiveFocus()
+        keepFocus(() => {
+            if (input.text.length > 0)
+                input.text = input.text.slice(0, input.text.length - 1)
+        })
     }
 
     function doEnter() {
-        if (rpn.enter(input.text))
-            input.text = ""
-        input.forceActiveFocus()
+        keepFocus(() => {
+            if (rpn.enter(input.text))
+                input.text = ""
+        })
     }
 
     function removeStackAt(row) {
@@ -132,21 +146,28 @@ ApplicationWindow {
     }
 
     // ===== shortcuts =====
+    // Limit Enter/Space shortcuts to input focus so they don't hijack keypad button activation.
     Shortcut {
         sequences: [ StandardKey.InsertParagraphSeparator, StandardKey.InsertLineSeparator ]
+        enabled: input.activeFocus
         onActivated: doEnter()
     }
-    Shortcut { sequence: "Space"; onActivated: doEnter() }
+    Shortcut {
+        sequence: "Space"
+        enabled: input.activeFocus
+        onActivated: doEnter()
+    }
+
+    // Backspace works globally, but keepFocus() prevents keypad focus from being stolen.
     Shortcut { sequence: "Backspace"; onActivated: backspace() }
 
-    // --- OPERATORY BINARNE ---
+    // operators from keyboard (global)
     Shortcut { sequence: "+"; onActivated: op(rpn.add) }
     Shortcut { sequence: "-"; onActivated: op(rpn.sub) }
     Shortcut { sequence: "*"; onActivated: op(rpn.mul) }
     Shortcut { sequence: "/"; onActivated: op(rpn.div) }
     Shortcut { sequence: "^"; onActivated: op(rpn.pow) }
 
-    // zamienniki z klawiatury numerycznej
     Shortcut { sequence: "Multiply"; onActivated: op(rpn.mul) }
     Shortcut { sequence: "Divide";   onActivated: op(rpn.div) }
     Shortcut { sequence: "Add";      onActivated: op(rpn.add) }
@@ -221,12 +242,23 @@ ApplicationWindow {
             inputMethodHints: Qt.ImhFormattedNumbersOnly
             focus: true
 
-            Keys.onReturnPressed: doEnter()
-            Keys.onEnterPressed: doEnter()
+            Keys.onReturnPressed: function(event) { doEnter(); event.accepted = true }
+            Keys.onEnterPressed: function(event)  { doEnter(); event.accepted = true }
 
-            Keys.onPressed: (event) => {
-                if (event.key === Qt.Key_Backspace) return
-                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) return
+            // Optional: Down jumps to keypad
+            Keys.onDownPressed: function(event) {
+                keypad.focusFirst()
+                event.accepted = true
+            }
+
+            Keys.onPressed: function(event) {
+                // allow normal Backspace in field
+                if (event.key === Qt.Key_Backspace)
+                    return
+
+                // Enter handled above
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                    return
 
                 let handled = true
 
@@ -235,7 +267,9 @@ ApplicationWindow {
                     case Qt.Key_Minus:    op(rpn.sub); break
                     case Qt.Key_Asterisk: op(rpn.mul); break
                     case Qt.Key_Slash:    op(rpn.div); break
-                    default: handled = false; break
+                    default:
+                        handled = false
+                        break
                 }
 
                 if (!handled) {
@@ -246,14 +280,14 @@ ApplicationWindow {
                         case "*": op(rpn.mul); break
                         case "/": op(rpn.div); break
                         case "^": op(rpn.pow); break
-                        default: handled = false; break
+                        default:
+                            handled = false
+                            break
                     }
                 }
 
-                if (handled) {
+                if (handled)
                     event.accepted = true
-                    input.forceActiveFocus()
-                }
             }
         }
 
@@ -287,7 +321,10 @@ ApplicationWindow {
             Frame {
                 id: stackFrame
                 padding: 0
-                SplitView.preferredHeight: Math.round(panes.height * 0.65)
+
+                // Default proportional sizes (stack larger)
+                SplitView.preferredHeight: Math.round(panes.height * 0.70)
+                SplitView.minimumHeight: 200
 
                 background: Rectangle {
                     radius: 10
@@ -310,30 +347,21 @@ ApplicationWindow {
                         currentIndex: -1
                         property int rowHeight: 40
 
-                        // żeby overlay suwak nie nachodził na X
                         property int vbarWidth: 10
 
-                        // pokaż suwak na scroll i schowaj po chwili
+                        // show overlay bar when scrolling
                         property bool showStackBar: false
-
                         Timer {
                             id: stackBarTimer
                             interval: 700
                             repeat: false
                             onTriggered: stackList.showStackBar = false
                         }
-
-                        onContentYChanged: {
-                            stackList.showStackBar = true
-                            stackBarTimer.restart()
-                        }
-                        onMovementStarted: {
-                            stackList.showStackBar = true
-                            stackBarTimer.restart()
-                        }
+                        onContentYChanged: { stackList.showStackBar = true; stackBarTimer.restart() }
+                        onMovementStarted: { stackList.showStackBar = true; stackBarTimer.restart() }
                         onMovementEnded: stackBarTimer.restart()
 
-                        // ===== SYSTEMOWY OVERLAY SCROLLBAR (akcent) =====
+                        // overlay accent scrollbar
                         ScrollBar.vertical: ScrollBar {
                             id: stackVBar
                             policy: ScrollBar.AsNeeded
@@ -385,10 +413,7 @@ ApplicationWindow {
                                 anchors.top: parent.top
                                 anchors.bottom: parent.bottom
                                 visible: !rowItem.editing
-                                onClicked: {
-                                    stackList.currentIndex = index
-                                    input.forceActiveFocus()
-                                }
+                                onClicked: { stackList.currentIndex = index; input.forceActiveFocus() }
                             }
 
                             Text {
@@ -464,17 +489,11 @@ ApplicationWindow {
                                     }
                                 }
 
-                                Keys.onReturnPressed: commit()
-                                Keys.onEnterPressed: commit()
+                                Keys.onReturnPressed: function(event) { commit(); event.accepted = true }
+                                Keys.onEnterPressed:  function(event) { commit(); event.accepted = true }
+                                Keys.onEscapePressed: function(event) { rowItem.editing = false; input.forceActiveFocus(); event.accepted = true }
 
-                                Keys.onEscapePressed: {
-                                    rowItem.editing = false
-                                    input.forceActiveFocus()
-                                }
-
-                                onEditingFinished: {
-                                    if (rowItem.editing) commit()
-                                }
+                                onEditingFinished: { if (rowItem.editing) commit() }
                             }
 
                             MouseArea {
@@ -550,7 +569,10 @@ ApplicationWindow {
             Frame {
                 id: historyFrame
                 padding: 6
-                SplitView.preferredHeight: Math.round(panes.height * 0.35)
+
+                SplitView.preferredHeight: Math.round(panes.height * 0.30)
+                SplitView.minimumHeight: 140
+
                 background: Rectangle {
                     radius: 10
                     color: historyFrame.palette.window
@@ -569,7 +591,7 @@ ApplicationWindow {
                         ToolButton { text: "Clear"; onClicked: rpn.clearHistory() }
                     }
 
-                    // ===== WERSJA "SYSTEMOWA": Flickable + TextEdit (pewne scrollbary) =====
+                    // Reliable scrolling: Flickable + TextEdit
                     Flickable {
                         id: historyFlick
                         Layout.fillWidth: true
@@ -579,13 +601,10 @@ ApplicationWindow {
                         boundsBehavior: Flickable.StopAtBounds
                         flickableDirection: Flickable.AutoFlickDirection
 
-                        // content z TextEdit
                         contentWidth: historyText.implicitWidth
                         contentHeight: historyText.implicitHeight
 
-                        // pokaż suwaki po scrollu i schowaj po chwili
                         property bool showHistBars: false
-
                         Timer {
                             id: histBarTimer
                             interval: 700
@@ -593,27 +612,16 @@ ApplicationWindow {
                             onTriggered: historyFlick.showHistBars = false
                         }
 
-                        onContentYChanged: {
-                            historyFlick.showHistBars = true
-                            histBarTimer.restart()
-                        }
-                        onContentXChanged: {
-                            historyFlick.showHistBars = true
-                            histBarTimer.restart()
-                        }
-                        onMovementStarted: {
-                            historyFlick.showHistBars = true
-                            histBarTimer.restart()
-                        }
+                        onContentYChanged: { historyFlick.showHistBars = true; histBarTimer.restart() }
+                        onContentXChanged: { historyFlick.showHistBars = true; histBarTimer.restart() }
+                        onMovementStarted: { historyFlick.showHistBars = true; histBarTimer.restart() }
                         onMovementEnded: histBarTimer.restart()
 
-                        // pionowy overlay
                         ScrollBar.vertical: ScrollBar {
                             id: histVBar
                             policy: ScrollBar.AsNeeded
                             hoverEnabled: true
                             z: 100
-
                             width: 10
                             padding: 2
 
@@ -632,13 +640,11 @@ ApplicationWindow {
                             }
                         }
 
-                        // poziomy overlay
                         ScrollBar.horizontal: ScrollBar {
                             id: histHBar
                             policy: ScrollBar.AsNeeded
                             hoverEnabled: true
                             z: 100
-
                             height: 10
                             padding: 2
 
@@ -661,19 +667,12 @@ ApplicationWindow {
                             id: historyText
                             x: 0
                             y: 0
-
                             text: rpn.historyText
                             readOnly: true
                             selectByMouse: true
-
-                            // brak zawijania, żeby poziomy scroll miał sens
                             wrapMode: TextEdit.NoWrap
-
                             font.family: "Monospace"
                             color: historyFrame.palette.text
-
-                            // ważne: niech tekst ma co najmniej szerokość viewportu,
-                            // ale może być szerszy (wtedy poziomy scroll działa)
                             width: Math.max(historyFlick.width, implicitWidth)
                         }
                     }
@@ -681,43 +680,128 @@ ApplicationWindow {
             }
         }
 
-        // ===== keypad =====
+        // ===== MODEL-DRIVEN KEYPAD (arrow navigation) =====
         GridLayout {
+            id: keypad
             Layout.fillWidth: true
             Layout.margins: 6
             columns: 5
             rowSpacing: 8
             columnSpacing: 8
 
-            Button { text: "7"; onClicked: appendChar("7") }
-            Button { text: "8"; onClicked: appendChar("8") }
-            Button { text: "9"; onClicked: appendChar("9") }
-            Button { text: "+"; onClicked: op(rpn.add) }
-            Button { text: "-"; onClicked: op(rpn.sub) }
+            // key model: { label, type, value }
+            // type: "char" | "op" | "fn" | "enter" | "back"
+            readonly property var keys: [
+                { label:"7",   type:"char", value:"7"   },
+                { label:"8",   type:"char", value:"8"   },
+                { label:"9",   type:"char", value:"9"   },
+                { label:"+",   type:"op",   value:"add" },
+                { label:"-",   type:"op",   value:"sub" },
 
-            Button { text: "4"; onClicked: appendChar("4") }
-            Button { text: "5"; onClicked: appendChar("5") }
-            Button { text: "6"; onClicked: appendChar("6") }
-            Button { text: "×"; onClicked: op(rpn.mul) }
-            Button { text: "/"; onClicked: op(rpn.div) }
+                { label:"4",   type:"char", value:"4"   },
+                { label:"5",   type:"char", value:"5"   },
+                { label:"6",   type:"char", value:"6"   },
+                { label:"×",   type:"op",   value:"mul" },
+                { label:"/",   type:"op",   value:"div" },
 
-            Button { text: "1"; onClicked: appendChar("1") }
-            Button { text: "2"; onClicked: appendChar("2") }
-            Button { text: "3"; onClicked: appendChar("3") }
-            Button { text: "sqrt"; onClicked: op(rpn.sqrt) }
-            Button { text: "xʸ"; onClicked: op(rpn.pow) }
+                { label:"1",   type:"char", value:"1"   },
+                { label:"2",   type:"char", value:"2"   },
+                { label:"3",   type:"char", value:"3"   },
+                { label:"sqrt",type:"fn",   value:"sqrt"},
+                { label:"xʸ",  type:"op",   value:"pow" },
 
-            Button { text: "0"; onClicked: appendChar("0") }
-            Button { text: "."; onClicked: appendChar(".") }
-            Button { text: "⌫"; onClicked: backspace() }
-            Button { text: "±"; onClicked: op(rpn.neg) }
-            Button { text: "dup"; onClicked: op(rpn.dup) }
+                { label:"0",   type:"char", value:"0"   },
+                { label:".",   type:"char", value:"."   },
+                { label:"⌫",   type:"back", value:""    },
+                { label:"±",   type:"fn",   value:"neg" },
+                { label:"dup", type:"fn",   value:"dup" },
 
-            Button { text: "sin"; onClicked: op(rpn.sin) }
-            Button { text: "cos"; onClicked: op(rpn.cos) }
-            Button { text: "swap"; onClicked: op(rpn.swap) }
-            Button { text: "drop"; onClicked: op(rpn.drop) }
-            Button { text: "ENTER"; onClicked: doEnter() }
+                { label:"sin", type:"fn",   value:"sin" },
+                { label:"cos", type:"fn",   value:"cos" },
+                { label:"swap",type:"fn",   value:"swap"},
+                { label:"drop",type:"fn",   value:"drop"},
+                { label:"ENTER",type:"enter",value:""   }
+            ]
+
+            function trigger(k) {
+                switch (k.type) {
+                    case "char":
+                        win.appendChar(k.value)
+                        break
+                    case "back":
+                        win.backspace()
+                        break
+                    case "enter":
+                        win.doEnter()
+                        break
+                    case "op":
+                        if      (k.value === "add") win.op(rpn.add)
+                        else if (k.value === "sub") win.op(rpn.sub)
+                        else if (k.value === "mul") win.op(rpn.mul)
+                        else if (k.value === "div") win.op(rpn.div)
+                        else if (k.value === "pow") win.op(rpn.pow)
+                        break
+                    case "fn":
+                        if      (k.value === "sqrt") win.op(rpn.sqrt)
+                        else if (k.value === "neg")  win.op(rpn.neg)
+                        else if (k.value === "dup")  win.op(rpn.dup)
+                        else if (k.value === "drop") win.op(rpn.drop)
+                        else if (k.value === "swap") win.op(rpn.swap)
+                        else if (k.value === "sin")  win.op(rpn.sin)
+                        else if (k.value === "cos")  win.op(rpn.cos)
+                        break
+                }
+            }
+
+            function focusFirst() {
+                const b = keypadRep.itemAt(0)
+                if (b) b.forceActiveFocus()
+            }
+
+            // Link arrow navigation after items are created
+            function relinkNav() {
+                const cols = keypad.columns
+                const n = keypadRep.count
+
+                for (let i = 0; i < n; i++) {
+                    const b = keypadRep.itemAt(i)
+                    if (!b) continue
+
+                    const leftIndex  = (i % cols === 0) ? -1 : (i - 1)
+                    const rightIndex = (i % cols === cols - 1) ? -1 : (i + 1)
+                    const upIndex    = (i - cols >= 0) ? (i - cols) : -1
+                    const downIndex  = (i + cols < n) ? (i + cols) : -1
+
+                    b.KeyNavigation.left  = (leftIndex  >= 0) ? keypadRep.itemAt(leftIndex)  : null
+                    b.KeyNavigation.right = (rightIndex >= 0) ? keypadRep.itemAt(rightIndex) : null
+                    b.KeyNavigation.down  = (downIndex  >= 0) ? keypadRep.itemAt(downIndex)  : null
+
+                    // Up: top row goes to input, otherwise normal
+                    if (i < cols) b.KeyNavigation.up = input
+                    else          b.KeyNavigation.up = keypadRep.itemAt(upIndex)
+                }
+            }
+
+            Repeater {
+                id: keypadRep
+                model: keypad.keys
+
+                delegate: Button {
+                    text: modelData.label
+                    focusPolicy: Qt.StrongFocus
+
+                    onClicked: keypad.trigger(modelData)
+
+                    Keys.onReturnPressed: function(event) { clicked(); event.accepted = true }
+                    Keys.onEnterPressed:  function(event) { clicked(); event.accepted = true }
+                    Keys.onEscapePressed: function(event) { input.forceActiveFocus(); event.accepted = true }
+                }
+
+                onItemAdded: Qt.callLater(keypad.relinkNav)
+                onItemRemoved: Qt.callLater(keypad.relinkNav)
+            }
+
+            Component.onCompleted: Qt.callLater(relinkNav)
         }
 
         Label {

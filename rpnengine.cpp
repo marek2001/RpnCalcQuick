@@ -1,6 +1,5 @@
 #include "rpnengine.h"
 
-#include <QtMath>
 #include <QLocale>
 #include <cmath>
 

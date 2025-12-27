@@ -20,6 +20,12 @@ ApplicationWindow {
 
     readonly property color accentColor: win.palette.highlight
 
+    // true when inline stack editField is active (so we don't steal keys from it)
+    readonly property bool stackEditing: stackList && stackList.currentItem && stackList.currentItem.editing
+
+    // allow "typing into input" even if focus is elsewhere (keypad/list/etc.)
+    readonly property bool allowGlobalTyping: !input.activeFocus && !stackEditing
+
     function keepFocus(doWork) {
         const prev = win.activeFocusItem
         doWork()
@@ -151,17 +157,66 @@ ApplicationWindow {
     }
 
     // ===== shortcuts =====
+
+    // ENTER / RETURN: always push input (works even when keypad button focused)
+    // but DON'T fire while editing a stack value (editField should own Enter)
     Shortcut {
-        sequences: [ StandardKey.InsertParagraphSeparator, StandardKey.InsertLineSeparator ]
-        enabled: input.activeFocus
-        onActivated: doEnter()
+        sequence: "Return"
+        context: Qt.ApplicationShortcut
+        enabled: !win.stackEditing
+        onActivated: win.doEnter()
     }
     Shortcut {
-        sequence: "Space"
-        enabled: input.activeFocus
-        onActivated: doEnter()
+        sequence: "Enter"
+        context: Qt.ApplicationShortcut
+        enabled: !win.stackEditing
+        onActivated: win.doEnter()
     }
-    Shortcut { sequence: "Backspace"; onActivated: backspace() }
+
+    // Backspace edits input even when focus is elsewhere,
+    // but NOT when input itself is focused (avoid double-delete),
+    // and NOT when stack editField is active.
+    Shortcut {
+        sequence: "Backspace"
+        context: Qt.ApplicationShortcut
+        enabled: win.allowGlobalTyping
+        onActivated: win.backspace()
+    }
+
+    // Digits: work from numpad even when focus is on keypad/list/etc.
+    // (Repeater needs Item delegate, so we wrap Shortcut inside an invisible Item.)
+    Repeater {
+        model: 10
+        delegate: Item {
+            visible: false
+            Shortcut {
+                sequence: modelData.toString()         // "0".."9"
+                context: Qt.ApplicationShortcut
+                enabled: win.allowGlobalTyping
+                onActivated: win.appendChar(modelData.toString())
+            }
+        }
+    }
+
+    // Decimal: "." or "," (we map both to ".")
+    Item {
+        visible: false
+        Shortcut {
+            sequence: "."
+            context: Qt.ApplicationShortcut
+            enabled: win.allowGlobalTyping
+            onActivated: win.appendChar(".")
+        }
+    }
+    Item {
+        visible: false
+        Shortcut {
+            sequence: ","
+            context: Qt.ApplicationShortcut
+            enabled: win.allowGlobalTyping
+            onActivated: win.appendChar(".")
+        }
+    }
 
     Shortcut { sequence: StandardKey.Undo; onActivated: rpn.undo() }
     Shortcut { sequence: StandardKey.Redo; onActivated: rpn.redo() }
@@ -234,15 +289,14 @@ ApplicationWindow {
         TextField {
             id: input
             Layout.fillWidth: true
-            placeholderText: "Wpisz liczbę, Enter → push"
             font.family: "Monospace"
             font.pointSize: 16
             horizontalAlignment: Text.AlignRight
             inputMethodHints: Qt.ImhFormattedNumbersOnly
             focus: true
 
-            Keys.onReturnPressed: function(event) { doEnter(); event.accepted = true }
-            Keys.onEnterPressed:  function(event) { doEnter(); event.accepted = true }
+            // Enter is handled globally (ApplicationShortcut) so it works everywhere.
+
             Keys.onDownPressed: function(event) { keypad.focusFirst(); event.accepted = true }
 
             Keys.onPressed: function(event) {
@@ -312,7 +366,6 @@ ApplicationWindow {
             orientation: Qt.Vertical
             clip: true
 
-            // we account for the handle height so items never overflow
             property int handleH: 8
             handle: Rectangle {
                 implicitHeight: panes.handleH
@@ -321,7 +374,6 @@ ApplicationWindow {
                 radius: 4
             }
 
-            // remembered proportion (changes when user drags)
             property real stackRatio: 0.70
             property bool applying: false
 
@@ -706,9 +758,10 @@ ApplicationWindow {
         GridLayout {
             id: keypad
             Layout.fillWidth: true
+            Layout.fillHeight: false
             Layout.margins: 6
             columns: 5
-            rowSpacing: 8
+            rowSpacing: 6
             columnSpacing: 8
 
             readonly property var keys: [
@@ -797,22 +850,26 @@ ApplicationWindow {
                 delegate: Button {
                     text: modelData.label
                     focusPolicy: Qt.StrongFocus
+
+                    Layout.fillWidth: true
+                    Layout.fillHeight: false
+                    Layout.preferredHeight: 40
+                    Layout.minimumHeight: 20
+                    Layout.maximumHeight: 34
+
                     onClicked: keypad.trigger(modelData)
-                    Keys.onReturnPressed: function(event) { clicked(); event.accepted = true }
-                    Keys.onEnterPressed:  function(event) { clicked(); event.accepted = true }
+
+                    // IMPORTANT: prevent focused button from "clicking" on Enter.
+                    // Enter should always push input to stack.
+                    Keys.onReturnPressed: function(e) { win.doEnter(); e.accepted = true }
+                    Keys.onEnterPressed:  function(e) { win.doEnter(); e.accepted = true }
+
                     Keys.onEscapePressed: function(event) { input.forceActiveFocus(); event.accepted = true }
                 }
                 onItemAdded: Qt.callLater(keypad.relinkNav)
                 onItemRemoved: Qt.callLater(keypad.relinkNav)
             }
             Component.onCompleted: Qt.callLater(relinkNav)
-        }
-
-        Label {
-            Layout.fillWidth: true
-            text: "Uwaga: sin/cos liczą w radianach. Klik na element stosu zaznacza go. X usuwa. Strzałki przesuwają wybrany element."
-            wrapMode: Text.Wrap
-            opacity: 0.75
         }
     }
 }

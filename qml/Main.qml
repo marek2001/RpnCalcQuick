@@ -443,6 +443,10 @@ ApplicationWindow {
                         property int rowHeight: 40
                         property int vbarWidth: 10
                         property bool showStackBar: false
+                        HoverHandler {
+                            id: stackHover
+                            // target domyślnie = parent, czyli stackList
+                        }
 
                         Timer {
                             id: stackBarTimer
@@ -459,21 +463,17 @@ ApplicationWindow {
                             policy: ScrollBar.AsNeeded
                             hoverEnabled: true
                             z: 100
-                            width: stackList.vbarWidth
+
+                            // exact right edge feel
+                            width: 12
                             padding: 2
+
+                            // show when needed (no reliance on hover)
                             readonly property bool needed: stackList.contentHeight > stackList.height + 1
                             visible: needed
-                            opacity: (needed && (stackList.showStackBar || pressed || hovered)) ? 1 : 0
-                            Behavior on opacity { NumberAnimation { duration: 140 } }
-                            background: Item {}
-                            contentItem: Rectangle {
-                                implicitWidth: 6
-                                radius: width / 2
-                                color: win.accentColor
-                                opacity: 0.9
-                            }
+                            opacity: needed ? 1 : 0
+                            Behavior on opacity { NumberAnimation { duration: 120 } }
                         }
-
                         delegate: Item {
                             id: rowItem
                             width: stackList.width
@@ -591,7 +591,7 @@ ApplicationWindow {
                             ToolButton {
                                 id: removeBtn
                                 anchors.right: parent.right
-                                anchors.rightMargin: 6 + stackList.vbarWidth
+                                anchors.rightMargin: 6 + stackVBar.width
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 34
                                 height: 34
@@ -708,13 +708,6 @@ ApplicationWindow {
                             visible: needed
                             opacity: (needed && (historyFlick.showHistBars || pressed || hovered)) ? 1 : 0
                             Behavior on opacity { NumberAnimation { duration: 140 } }
-                            background: Item {}
-                            contentItem: Rectangle {
-                                implicitWidth: 6
-                                radius: width / 2
-                                color: win.accentColor
-                                opacity: 0.9
-                            }
                         }
 
                         ScrollBar.horizontal: ScrollBar {
@@ -728,13 +721,6 @@ ApplicationWindow {
                             visible: needed
                             opacity: (needed && (historyFlick.showHistBars || pressed || hovered)) ? 1 : 0
                             Behavior on opacity { NumberAnimation { duration: 140 } }
-                            background: Item {}
-                            contentItem: Rectangle {
-                                implicitHeight: 6
-                                radius: height / 2
-                                color: win.accentColor
-                                opacity: 0.9
-                            }
                         }
 
                         TextEdit {

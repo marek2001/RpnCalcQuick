@@ -21,59 +21,44 @@ RpnEngine::RpnEngine(QObject *parent) : QObject(parent) {
 
 void RpnEngine::saveState()
 {
-    // Zapisz obecny stan na stos undo
-    m_undoStack.push_back(m_model.snapshot());
+    m_undoStack.push_back(captureState());
 
-    // Każda nowa akcja czyści możliwość Redo (historia alternatywna przepada)
     if (!m_redoStack.isEmpty()) {
         m_redoStack.clear();
         emit canRedoChanged();
     }
 
-    // Ogranicz rozmiar historii (np. do 100 kroków)
     if (m_undoStack.size() > 100)
         m_undoStack.removeFirst();
 
     emit canUndoChanged();
 }
 
+
 void RpnEngine::undo()
 {
     if (m_undoStack.isEmpty()) return;
 
-    // 1. Zapisz obecny stan na stos Redo (zanim go nadpiszemy)
-    m_redoStack.push_back(m_model.snapshot());
+    m_redoStack.push_back(captureState());          // bieżący -> redo
+    EngineState prev = m_undoStack.takeLast();      // poprzedni
+    restoreState(prev);
 
-    // 2. Pobierz ostatni stan z Undo
-    QVector<double> prevState = m_undoStack.takeLast();
-
-    // 3. Przywróć model
-    m_model.restore(prevState);
-
-    // 4. Odśwież UI i logi
     emit canUndoChanged();
     emit canRedoChanged();
-    appendHistoryLine("--- undo ---");
 }
 
 void RpnEngine::redo()
 {
     if (m_redoStack.isEmpty()) return;
 
-    // 1. Zapisz obecny stan na Undo
-    m_undoStack.push_back(m_model.snapshot());
+    m_undoStack.push_back(captureState());          // bieżący -> undo
+    EngineState next = m_redoStack.takeLast();      // następny
+    restoreState(next);
 
-    // 2. Pobierz stan z Redo
-    QVector<double> nextState = m_redoStack.takeLast();
-
-    // 3. Przywróć model
-    m_model.restore(nextState);
-
-    // 4. Odśwież UI i logi
     emit canUndoChanged();
     emit canRedoChanged();
-    appendHistoryLine("--- redo ---");
 }
+
 
 // ==========================================
 // HISTORIA TEKSTOWA I BŁĘDY
@@ -92,10 +77,14 @@ void RpnEngine::appendHistoryLine(const QString &line)
 
 void RpnEngine::clearHistory()
 {
-    m_history.clear(); 
+    if (m_historyText.isEmpty()) return; // nic do czyszczenia
+
+    saveState();
+    m_history.clear();
     m_historyText.clear();
     emit historyTextChanged();
 }
+
 
 void RpnEngine::error(const QString &msg)
 {
@@ -386,4 +375,22 @@ void RpnEngine::setPrecision(int p)
     emit precisionChanged();
 
     m_model.setNumberFormat(m_formatMode, m_precision);
+}
+
+RpnEngine::EngineState RpnEngine::captureState() const
+{
+    EngineState s;
+    s.stack = m_model.snapshot();
+    s.historyText = m_historyText;
+    // s.history = m_history;
+    return s;
+}
+
+void RpnEngine::restoreState(const EngineState &s)
+{
+    m_model.restore(s.stack);
+    m_historyText = s.historyText;
+    // m_history = s.history;
+
+    emit historyTextChanged();
 }

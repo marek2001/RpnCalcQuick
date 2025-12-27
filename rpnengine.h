@@ -93,7 +93,17 @@ private:
     void appendHistoryLine(const QString &line);
 
     // --- HISTORIA STANÓW ---
-    QList<QVector<double>> m_undoStack;
-    QList<QVector<double>> m_redoStack;
     void saveState(); // Wywoływana przed modyfikacją
+    struct EngineState {
+        QVector<double> stack;
+        QString historyText;
+        // jeśli używasz m_history jako lista, możesz też dodać:
+        // QStringList history;
+    };
+
+    EngineState captureState() const;
+    void restoreState(const EngineState& s);
+
+    QVector<EngineState> m_undoStack;
+    QVector<EngineState> m_redoStack;
 };

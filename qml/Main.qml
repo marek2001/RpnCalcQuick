@@ -79,13 +79,9 @@ ApplicationWindow {
 
         Native.Menu {
             title: "History"
-            Native.MenuItem {
-                text: "Clear history"
-                onTriggered: rpn.clearHistory()
-            }
+            Native.MenuItem { text: "Clear history"; onTriggered: rpn.clearHistory() }
         }
 
-        // --- MENU UNDO/REDO (Opcjonalnie w pasku) ---
         Native.Menu {
             title: "Edit"
             Native.MenuItem {
@@ -120,9 +116,7 @@ ApplicationWindow {
     }
 
     function appendChar(s) {
-        keepFocus(() => {
-            input.text = input.text + s
-        })
+        keepFocus(() => { input.text = input.text + s })
     }
 
     function backspace() {
@@ -169,16 +163,8 @@ ApplicationWindow {
     }
     Shortcut { sequence: "Backspace"; onActivated: backspace() }
 
-    // --- NOWE SKRÓTY UNDO/REDO ---
-    Shortcut {
-        sequence: StandardKey.Undo
-        onActivated: rpn.undo()
-    }
-    Shortcut {
-        sequence: StandardKey.Redo
-        onActivated: rpn.redo()
-    }
-    // ----------------------------
+    Shortcut { sequence: StandardKey.Undo; onActivated: rpn.undo() }
+    Shortcut { sequence: StandardKey.Redo; onActivated: rpn.redo() }
 
     Shortcut { sequence: "+"; onActivated: op(rpn.add) }
     Shortcut { sequence: "-"; onActivated: op(rpn.sub) }
@@ -254,12 +240,15 @@ ApplicationWindow {
             horizontalAlignment: Text.AlignRight
             inputMethodHints: Qt.ImhFormattedNumbersOnly
             focus: true
+
             Keys.onReturnPressed: function(event) { doEnter(); event.accepted = true }
-            Keys.onEnterPressed: function(event)  { doEnter(); event.accepted = true }
+            Keys.onEnterPressed:  function(event) { doEnter(); event.accepted = true }
             Keys.onDownPressed: function(event) { keypad.focusFirst(); event.accepted = true }
+
             Keys.onPressed: function(event) {
                 if (event.key === Qt.Key_Backspace) return
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) return
+
                 let handled = true
                 switch (event.key) {
                     case Qt.Key_Plus:     op(rpn.add); break
@@ -268,6 +257,7 @@ ApplicationWindow {
                     case Qt.Key_Slash:    op(rpn.div); break
                     default: handled = false; break
                 }
+
                 if (!handled) {
                     handled = true
                     switch (event.text) {
@@ -279,6 +269,7 @@ ApplicationWindow {
                         default: handled = false; break
                     }
                 }
+
                 if (handled) event.accepted = true
             }
         }
@@ -290,7 +281,6 @@ ApplicationWindow {
             Button { text: "π"; onClicked: rpn.pushPi() }
             Button { text: "e"; onClicked: rpn.pushE() }
 
-            // --- NOWE PRZYCISKI UNDO/REDO ---
             Button {
                 text: "↶"
                 enabled: rpn.canUndo
@@ -301,7 +291,6 @@ ApplicationWindow {
                 enabled: rpn.canRedo
                 onClicked: win.keepFocus(() => rpn.redo())
             }
-            // --------------------------------
 
             Item { Layout.fillWidth: true }
 
@@ -321,22 +310,76 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             orientation: Qt.Vertical
+            clip: true
+
+            // we account for the handle height so items never overflow
+            property int handleH: 8
+            handle: Rectangle {
+                implicitHeight: panes.handleH
+                color: panes.palette.mid
+                opacity: 0.6
+                radius: 4
+            }
+
+            // remembered proportion (changes when user drags)
+            property real stackRatio: 0.70
+            property bool applying: false
+
+            function applyRatio() {
+                if (!stackFrame || !historyFrame) return
+                applying = true
+
+                const available = Math.max(0, panes.height - panes.handleH)
+                const minS = stackFrame.SplitView.minimumHeight || 0
+                const minH = historyFrame.SplitView.minimumHeight || 0
+
+                let s = Math.round(available * stackRatio)
+                s = Math.max(0, Math.min(available, s))
+                let h = available - s
+
+                if (s < minS) { s = Math.min(minS, available); h = available - s }
+                if (h < minH) { h = Math.min(minH, available); s = available - h }
+
+                stackFrame.SplitView.preferredHeight = s
+                historyFrame.SplitView.preferredHeight = h
+
+                applying = false
+            }
+
+            onHeightChanged: applyRatio()
+            Component.onCompleted: Qt.callLater(applyRatio)
+
+            Timer {
+                id: sampleRatio
+                interval: 0
+                repeat: false
+                onTriggered: {
+                    if (panes.applying) return
+                    const available = Math.max(1, panes.height - panes.handleH)
+                    panes.stackRatio = Math.max(0.05, Math.min(0.95, stackFrame.height / available))
+                }
+            }
+
+            Connections { target: stackFrame;   function onHeightChanged() { sampleRatio.restart() } }
+            Connections { target: historyFrame; function onHeightChanged() { sampleRatio.restart() } }
 
             // ---- STACK ----
             Frame {
                 id: stackFrame
                 padding: 0
-                SplitView.preferredHeight: Math.round(panes.height * 0.70)
                 SplitView.minimumHeight: 200
+
                 background: Rectangle {
                     radius: 10
                     color: stackFrame.palette.window
                     border.color: stackFrame.palette.mid
                     border.width: 1
                 }
+
                 RowLayout {
                     anchors.fill: parent
                     spacing: 0
+
                     ListView {
                         id: stackList
                         Layout.fillWidth: true
@@ -344,9 +387,11 @@ ApplicationWindow {
                         clip: true
                         model: rpn.stackModel
                         currentIndex: -1
+
                         property int rowHeight: 40
                         property int vbarWidth: 10
                         property bool showStackBar: false
+
                         Timer {
                             id: stackBarTimer
                             interval: 700
@@ -356,6 +401,7 @@ ApplicationWindow {
                         onContentYChanged: { stackList.showStackBar = true; stackBarTimer.restart() }
                         onMovementStarted: { stackList.showStackBar = true; stackBarTimer.restart() }
                         onMovementEnded: stackBarTimer.restart()
+
                         ScrollBar.vertical: ScrollBar {
                             id: stackVBar
                             policy: ScrollBar.AsNeeded
@@ -375,12 +421,14 @@ ApplicationWindow {
                                 opacity: 0.9
                             }
                         }
+
                         delegate: Item {
                             id: rowItem
                             width: stackList.width
                             height: stackList.rowHeight
                             property bool editing: false
                             readonly property bool isSelected: ListView.isCurrentItem
+
                             Rectangle {
                                 anchors.fill: parent
                                 color: rowItem.isSelected ? stackFrame.palette.highlight : stackFrame.palette.base
@@ -392,6 +440,7 @@ ApplicationWindow {
                                 height: 1
                                 color: stackFrame.palette.mid
                             }
+
                             MouseArea {
                                 anchors.left: parent.left
                                 anchors.right: removeBtn.left
@@ -400,6 +449,7 @@ ApplicationWindow {
                                 visible: !rowItem.editing
                                 onClicked: { stackList.currentIndex = index; input.forceActiveFocus() }
                             }
+
                             Text {
                                 id: idxText
                                 anchors.left: parent.left
@@ -409,6 +459,7 @@ ApplicationWindow {
                                 color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.text
                                 font.family: "Monospace"
                             }
+
                             Rectangle {
                                 id: vSep
                                 width: 1
@@ -421,6 +472,7 @@ ApplicationWindow {
                                 color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.mid
                                 opacity: 0.5
                             }
+
                             Text {
                                 id: valueText
                                 anchors.left: vSep.right
@@ -434,6 +486,7 @@ ApplicationWindow {
                                 font.family: "Monospace"
                                 elide: Text.ElideLeft
                             }
+
                             MouseArea {
                                 anchors.fill: valueText
                                 enabled: !rowItem.editing
@@ -445,6 +498,7 @@ ApplicationWindow {
                                     editField.selectAll()
                                 }
                             }
+
                             TextField {
                                 id: editField
                                 anchors.left: vSep.right
@@ -457,6 +511,7 @@ ApplicationWindow {
                                 font.family: "Monospace"
                                 selectByMouse: true
                                 Keys.priority: Keys.BeforeItem
+
                                 function commit() {
                                     if (rpn.stackModel.setValueAt(index, text)) {
                                         rowItem.editing = false
@@ -467,17 +522,20 @@ ApplicationWindow {
                                         selectAll()
                                     }
                                 }
+
                                 Keys.onReturnPressed: function(event) { commit(); event.accepted = true }
                                 Keys.onEnterPressed:  function(event) { commit(); event.accepted = true }
                                 Keys.onEscapePressed: function(event) { rowItem.editing = false; input.forceActiveFocus(); event.accepted = true }
                                 onEditingFinished: { if (rowItem.editing) commit() }
                             }
+
                             MouseArea {
                                 anchors.fill: parent
                                 visible: rowItem.editing
                                 z: 999
                                 onClicked: editField.commit()
                             }
+
                             ToolButton {
                                 id: removeBtn
                                 anchors.right: parent.right
@@ -490,19 +548,23 @@ ApplicationWindow {
                             }
                         }
                     }
+
                     Frame {
                         id: arrows
                         Layout.preferredWidth: 48
                         Layout.fillHeight: true
                         padding: 6
+
                         background: Rectangle {
                             color: arrows.palette.window
                             border.color: arrows.palette.mid
                             border.width: 1
                         }
+
                         ColumnLayout {
                             anchors.fill: parent
                             spacing: 6
+
                             ToolButton {
                                 text: "▲"
                                 Layout.fillWidth: true
@@ -515,6 +577,7 @@ ApplicationWindow {
                                     }
                                 }
                             }
+
                             ToolButton {
                                 text: "▼"
                                 Layout.fillWidth: true
@@ -527,6 +590,7 @@ ApplicationWindow {
                                     }
                                 }
                             }
+
                             Item { Layout.fillHeight: true }
                         }
                     }
@@ -537,23 +601,26 @@ ApplicationWindow {
             Frame {
                 id: historyFrame
                 padding: 6
-                SplitView.preferredHeight: Math.round(panes.height * 0.30)
                 SplitView.minimumHeight: 140
+
                 background: Rectangle {
                     radius: 10
                     color: historyFrame.palette.window
                     border.color: historyFrame.palette.mid
                     border.width: 1
                 }
+
                 ColumnLayout {
                     anchors.fill: parent
                     spacing: 6
+
                     RowLayout {
                         Layout.fillWidth: true
                         Label { text: "History"; opacity: 0.85 }
                         Item { Layout.fillWidth: true }
                         ToolButton { text: "Clear"; onClicked: rpn.clearHistory() }
                     }
+
                     Flickable {
                         id: historyFlick
                         Layout.fillWidth: true
@@ -561,8 +628,10 @@ ApplicationWindow {
                         clip: true
                         boundsBehavior: Flickable.StopAtBounds
                         flickableDirection: Flickable.AutoFlickDirection
+
                         contentWidth: historyText.implicitWidth
                         contentHeight: historyText.implicitHeight
+
                         property bool showHistBars: false
                         Timer {
                             id: histBarTimer
@@ -570,10 +639,12 @@ ApplicationWindow {
                             repeat: false
                             onTriggered: historyFlick.showHistBars = false
                         }
+
                         onContentYChanged: { historyFlick.showHistBars = true; histBarTimer.restart() }
                         onContentXChanged: { historyFlick.showHistBars = true; histBarTimer.restart() }
                         onMovementStarted: { historyFlick.showHistBars = true; histBarTimer.restart() }
                         onMovementEnded: histBarTimer.restart()
+
                         ScrollBar.vertical: ScrollBar {
                             id: histVBar
                             policy: ScrollBar.AsNeeded
@@ -593,6 +664,7 @@ ApplicationWindow {
                                 opacity: 0.9
                             }
                         }
+
                         ScrollBar.horizontal: ScrollBar {
                             id: histHBar
                             policy: ScrollBar.AsNeeded
@@ -612,6 +684,7 @@ ApplicationWindow {
                                 opacity: 0.9
                             }
                         }
+
                         TextEdit {
                             id: historyText
                             x: 0

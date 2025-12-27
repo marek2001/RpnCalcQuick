@@ -1,9 +1,9 @@
 #pragma once
 #include <QObject>
+#include <QList> // Potrzebne do historii
 
 #include "rpnstackmodel.h"
 #include "rpnhistorymodel.h"
-
 
 class RpnEngine : public QObject
 {
@@ -14,11 +14,13 @@ class RpnEngine : public QObject
     Q_PROPERTY(RpnHistoryModel* historyModel READ historyModel CONSTANT)
     Q_PROPERTY(QString historyText READ historyText NOTIFY historyTextChanged)
 
-
+    // --- NOWE PROPERTY DLA UI ---
+    Q_PROPERTY(bool canUndo READ canUndo NOTIFY canUndoChanged)
+    Q_PROPERTY(bool canRedo READ canRedo NOTIFY canRedoChanged)
+    // ----------------------------
 
     int formatMode() const { return m_formatMode; }
     int precision() const { return m_precision; }
-
     QString historyText() const { return m_historyText; }
     
 public:
@@ -53,39 +55,45 @@ public:
 
     Q_INVOKABLE void clearHistory();
 
+    // --- NOWE METODY UNDO/REDO ---
+    Q_INVOKABLE void undo();
+    Q_INVOKABLE void redo();
+    bool canUndo() const { return !m_undoStack.isEmpty(); }
+    bool canRedo() const { return !m_redoStack.isEmpty(); }
+    // -----------------------------
+
     RpnHistoryModel* historyModel() { return &m_history; }
     QString topAsString() const;
 
-
-
-    signals:
-        void errorOccurred(const QString &message);
-        void formatModeChanged();
-        void precisionChanged();
-        void historyTextChanged();
-    public slots:
-        void setFormatMode(int mode);
-        void setPrecision(int p);
-
+signals:
+    void errorOccurred(const QString &message);
+    void formatModeChanged();
+    void precisionChanged();
+    void historyTextChanged();
     
+    // Sygnały zmiany stanu undo/redo
+    void canUndoChanged();
+    void canRedoChanged();
+
+public slots:
+    void setFormatMode(int mode);
+    void setPrecision(int p);
 
 private:
     RpnStackModel m_model;
     int m_formatMode = RpnStackModel::Simple;
     int m_precision  = 9;
+    
     bool require(int n);
     void error(const QString &msg);
+    bool pop2(double &a, double &b);
 
-    bool pop2(double &a, double &b); // a=drugi (X1), b=top (X0)
-
-    void applyNumberStyle();
     RpnHistoryModel m_history;
     QString m_historyText;
     void appendHistoryLine(const QString &line);
 
-    
-
-    
+    // --- HISTORIA STANÓW ---
+    QList<QVector<double>> m_undoStack;
+    QList<QVector<double>> m_redoStack;
+    void saveState(); // Wywoływana przed modyfikacją
 };
-
-

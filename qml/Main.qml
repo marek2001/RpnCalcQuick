@@ -18,19 +18,16 @@ ApplicationWindow {
     maximumWidth: 800
     maximumHeight: 1200
 
-    // System accent color (works reliably)
     readonly property color accentColor: win.palette.highlight
 
-    // Keep focus on whichever control had it before (e.g., keypad button)
     function keepFocus(doWork) {
         const prev = win.activeFocusItem
         doWork()
-        // If work moved focus to input but we came from somewhere else, restore
         if (prev && prev !== input && win.activeFocusItem === input)
             prev.forceActiveFocus()
     }
 
-    // ===== Global Menu (KDE Plasma) =====
+    // ===== Global Menu =====
     Native.MenuBar {
         id: appMenu
         window: win
@@ -65,11 +62,9 @@ ApplicationWindow {
         Native.Menu {
             id: precisionMenu
             title: "Precision"
-
             Native.MenuItemGroup { id: precGroup; exclusive: true }
-
             Instantiator {
-                model: 16 // 0..15
+                model: 16
                 delegate: Native.MenuItem {
                     text: model.index.toString()
                     checkable: true
@@ -87,6 +82,23 @@ ApplicationWindow {
             Native.MenuItem {
                 text: "Clear history"
                 onTriggered: rpn.clearHistory()
+            }
+        }
+
+        // --- MENU UNDO/REDO (Opcjonalnie w pasku) ---
+        Native.Menu {
+            title: "Edit"
+            Native.MenuItem {
+                text: "Undo"
+                shortcut: "Ctrl+Z"
+                enabled: rpn.canUndo
+                onTriggered: rpn.undo()
+            }
+            Native.MenuItem {
+                text: "Redo"
+                shortcut: StandardKey.Redo
+                enabled: rpn.canRedo
+                onTriggered: rpn.redo()
             }
         }
     }
@@ -136,7 +148,6 @@ ApplicationWindow {
             stackList.currentIndex = -1
             return
         }
-
         if (cur === -1) stackList.currentIndex = 0
         else if (cur > row) stackList.currentIndex = cur - 1
         else if (cur === row) stackList.currentIndex = Math.min(row, stackList.count - 1)
@@ -146,7 +157,6 @@ ApplicationWindow {
     }
 
     // ===== shortcuts =====
-    // Limit Enter/Space shortcuts to input focus so they don't hijack keypad button activation.
     Shortcut {
         sequences: [ StandardKey.InsertParagraphSeparator, StandardKey.InsertLineSeparator ]
         enabled: input.activeFocus
@@ -157,11 +167,19 @@ ApplicationWindow {
         enabled: input.activeFocus
         onActivated: doEnter()
     }
-
-    // Backspace works globally, but keepFocus() prevents keypad focus from being stolen.
     Shortcut { sequence: "Backspace"; onActivated: backspace() }
 
-    // operators from keyboard (global)
+    // --- NOWE SKRÓTY UNDO/REDO ---
+    Shortcut {
+        sequence: StandardKey.Undo
+        onActivated: rpn.undo()
+    }
+    Shortcut {
+        sequence: StandardKey.Redo
+        onActivated: rpn.redo()
+    }
+    // ----------------------------
+
     Shortcut { sequence: "+"; onActivated: op(rpn.add) }
     Shortcut { sequence: "-"; onActivated: op(rpn.sub) }
     Shortcut { sequence: "*"; onActivated: op(rpn.mul) }
@@ -169,7 +187,7 @@ ApplicationWindow {
     Shortcut { sequence: "^"; onActivated: op(rpn.pow) }
 
     Shortcut { sequence: "Multiply"; onActivated: op(rpn.mul) }
-    Shortcut { sequence: "Divide";   onActivated: op(rpn.div) }
+    Shortcut { sequence: "Divide"; onActivated: op(rpn.div) }
     Shortcut { sequence: "Add";      onActivated: op(rpn.add) }
     Shortcut { sequence: "Subtract"; onActivated: op(rpn.sub) }
 
@@ -189,10 +207,8 @@ ApplicationWindow {
         closePolicy: Popup.NoAutoClose
         padding: 10
         property string text: ""
-
         x: (parent.width - width) / 2
         y: parent.height - height - 16
-
         background: Rectangle {
             radius: 10
             color: toast.palette.window
@@ -200,21 +216,18 @@ ApplicationWindow {
             border.width: 1
             opacity: 0.95
         }
-
         contentItem: Text {
             text: toast.text
             color: toast.palette.text
             wrapMode: Text.Wrap
             width: Math.min(parent.width * 0.9, 360)
         }
-
         Timer {
             id: toastTimer
             interval: 3000
             repeat: false
             onTriggered: toast.close()
         }
-
         function show(msg) {
             toast.text = msg
             toast.open()
@@ -241,37 +254,20 @@ ApplicationWindow {
             horizontalAlignment: Text.AlignRight
             inputMethodHints: Qt.ImhFormattedNumbersOnly
             focus: true
-
             Keys.onReturnPressed: function(event) { doEnter(); event.accepted = true }
             Keys.onEnterPressed: function(event)  { doEnter(); event.accepted = true }
-
-            // Optional: Down jumps to keypad
-            Keys.onDownPressed: function(event) {
-                keypad.focusFirst()
-                event.accepted = true
-            }
-
+            Keys.onDownPressed: function(event) { keypad.focusFirst(); event.accepted = true }
             Keys.onPressed: function(event) {
-                // allow normal Backspace in field
-                if (event.key === Qt.Key_Backspace)
-                    return
-
-                // Enter handled above
-                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-                    return
-
+                if (event.key === Qt.Key_Backspace) return
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) return
                 let handled = true
-
                 switch (event.key) {
                     case Qt.Key_Plus:     op(rpn.add); break
                     case Qt.Key_Minus:    op(rpn.sub); break
                     case Qt.Key_Asterisk: op(rpn.mul); break
                     case Qt.Key_Slash:    op(rpn.div); break
-                    default:
-                        handled = false
-                        break
+                    default: handled = false; break
                 }
-
                 if (!handled) {
                     handled = true
                     switch (event.text) {
@@ -280,14 +276,10 @@ ApplicationWindow {
                         case "*": op(rpn.mul); break
                         case "/": op(rpn.div); break
                         case "^": op(rpn.pow); break
-                        default:
-                            handled = false
-                            break
+                        default: handled = false; break
                     }
                 }
-
-                if (handled)
-                    event.accepted = true
+                if (handled) event.accepted = true
             }
         }
 
@@ -297,6 +289,19 @@ ApplicationWindow {
 
             Button { text: "π"; onClicked: rpn.pushPi() }
             Button { text: "e"; onClicked: rpn.pushE() }
+
+            // --- NOWE PRZYCISKI UNDO/REDO ---
+            Button {
+                text: "↶"
+                enabled: rpn.canUndo
+                onClicked: win.keepFocus(() => rpn.undo())
+            }
+            Button {
+                text: "↷"
+                enabled: rpn.canRedo
+                onClicked: win.keepFocus(() => rpn.redo())
+            }
+            // --------------------------------
 
             Item { Layout.fillWidth: true }
 
@@ -321,35 +326,26 @@ ApplicationWindow {
             Frame {
                 id: stackFrame
                 padding: 0
-
-                // Default proportional sizes (stack larger)
                 SplitView.preferredHeight: Math.round(panes.height * 0.70)
                 SplitView.minimumHeight: 200
-
                 background: Rectangle {
                     radius: 10
                     color: stackFrame.palette.window
                     border.color: stackFrame.palette.mid
                     border.width: 1
                 }
-
                 RowLayout {
                     anchors.fill: parent
                     spacing: 0
-
                     ListView {
                         id: stackList
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         clip: true
-
                         model: rpn.stackModel
                         currentIndex: -1
                         property int rowHeight: 40
-
                         property int vbarWidth: 10
-
-                        // show overlay bar when scrolling
                         property bool showStackBar: false
                         Timer {
                             id: stackBarTimer
@@ -360,23 +356,17 @@ ApplicationWindow {
                         onContentYChanged: { stackList.showStackBar = true; stackBarTimer.restart() }
                         onMovementStarted: { stackList.showStackBar = true; stackBarTimer.restart() }
                         onMovementEnded: stackBarTimer.restart()
-
-                        // overlay accent scrollbar
                         ScrollBar.vertical: ScrollBar {
                             id: stackVBar
                             policy: ScrollBar.AsNeeded
                             hoverEnabled: true
                             z: 100
-
                             width: stackList.vbarWidth
                             padding: 2
-
                             readonly property bool needed: stackList.contentHeight > stackList.height + 1
                             visible: needed
-
                             opacity: (needed && (stackList.showStackBar || pressed || hovered)) ? 1 : 0
                             Behavior on opacity { NumberAnimation { duration: 140 } }
-
                             background: Item {}
                             contentItem: Rectangle {
                                 implicitWidth: 6
@@ -385,20 +375,16 @@ ApplicationWindow {
                                 opacity: 0.9
                             }
                         }
-
                         delegate: Item {
                             id: rowItem
                             width: stackList.width
                             height: stackList.rowHeight
                             property bool editing: false
-
                             readonly property bool isSelected: ListView.isCurrentItem
-
                             Rectangle {
                                 anchors.fill: parent
                                 color: rowItem.isSelected ? stackFrame.palette.highlight : stackFrame.palette.base
                             }
-
                             Rectangle {
                                 anchors.left: parent.left
                                 anchors.right: parent.right
@@ -406,7 +392,6 @@ ApplicationWindow {
                                 height: 1
                                 color: stackFrame.palette.mid
                             }
-
                             MouseArea {
                                 anchors.left: parent.left
                                 anchors.right: removeBtn.left
@@ -415,7 +400,6 @@ ApplicationWindow {
                                 visible: !rowItem.editing
                                 onClicked: { stackList.currentIndex = index; input.forceActiveFocus() }
                             }
-
                             Text {
                                 id: idxText
                                 anchors.left: parent.left
@@ -425,7 +409,6 @@ ApplicationWindow {
                                 color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.text
                                 font.family: "Monospace"
                             }
-
                             Rectangle {
                                 id: vSep
                                 width: 1
@@ -438,7 +421,6 @@ ApplicationWindow {
                                 color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.mid
                                 opacity: 0.5
                             }
-
                             Text {
                                 id: valueText
                                 anchors.left: vSep.right
@@ -452,7 +434,6 @@ ApplicationWindow {
                                 font.family: "Monospace"
                                 elide: Text.ElideLeft
                             }
-
                             MouseArea {
                                 anchors.fill: valueText
                                 enabled: !rowItem.editing
@@ -464,7 +445,6 @@ ApplicationWindow {
                                     editField.selectAll()
                                 }
                             }
-
                             TextField {
                                 id: editField
                                 anchors.left: vSep.right
@@ -477,7 +457,6 @@ ApplicationWindow {
                                 font.family: "Monospace"
                                 selectByMouse: true
                                 Keys.priority: Keys.BeforeItem
-
                                 function commit() {
                                     if (rpn.stackModel.setValueAt(index, text)) {
                                         rowItem.editing = false
@@ -488,21 +467,17 @@ ApplicationWindow {
                                         selectAll()
                                     }
                                 }
-
                                 Keys.onReturnPressed: function(event) { commit(); event.accepted = true }
                                 Keys.onEnterPressed:  function(event) { commit(); event.accepted = true }
                                 Keys.onEscapePressed: function(event) { rowItem.editing = false; input.forceActiveFocus(); event.accepted = true }
-
                                 onEditingFinished: { if (rowItem.editing) commit() }
                             }
-
                             MouseArea {
                                 anchors.fill: parent
                                 visible: rowItem.editing
                                 z: 999
                                 onClicked: editField.commit()
                             }
-
                             ToolButton {
                                 id: removeBtn
                                 anchors.right: parent.right
@@ -515,24 +490,19 @@ ApplicationWindow {
                             }
                         }
                     }
-
-                    // arrows: move selected item
                     Frame {
                         id: arrows
                         Layout.preferredWidth: 48
                         Layout.fillHeight: true
                         padding: 6
-
                         background: Rectangle {
                             color: arrows.palette.window
                             border.color: arrows.palette.mid
                             border.width: 1
                         }
-
                         ColumnLayout {
                             anchors.fill: parent
                             spacing: 6
-
                             ToolButton {
                                 text: "▲"
                                 Layout.fillWidth: true
@@ -545,7 +515,6 @@ ApplicationWindow {
                                     }
                                 }
                             }
-
                             ToolButton {
                                 text: "▼"
                                 Layout.fillWidth: true
@@ -558,7 +527,6 @@ ApplicationWindow {
                                     }
                                 }
                             }
-
                             Item { Layout.fillHeight: true }
                         }
                     }
@@ -569,41 +537,32 @@ ApplicationWindow {
             Frame {
                 id: historyFrame
                 padding: 6
-
                 SplitView.preferredHeight: Math.round(panes.height * 0.30)
                 SplitView.minimumHeight: 140
-
                 background: Rectangle {
                     radius: 10
                     color: historyFrame.palette.window
                     border.color: historyFrame.palette.mid
                     border.width: 1
                 }
-
                 ColumnLayout {
                     anchors.fill: parent
                     spacing: 6
-
                     RowLayout {
                         Layout.fillWidth: true
                         Label { text: "History"; opacity: 0.85 }
                         Item { Layout.fillWidth: true }
                         ToolButton { text: "Clear"; onClicked: rpn.clearHistory() }
                     }
-
-                    // Reliable scrolling: Flickable + TextEdit
                     Flickable {
                         id: historyFlick
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         clip: true
-
                         boundsBehavior: Flickable.StopAtBounds
                         flickableDirection: Flickable.AutoFlickDirection
-
                         contentWidth: historyText.implicitWidth
                         contentHeight: historyText.implicitHeight
-
                         property bool showHistBars: false
                         Timer {
                             id: histBarTimer
@@ -611,12 +570,10 @@ ApplicationWindow {
                             repeat: false
                             onTriggered: historyFlick.showHistBars = false
                         }
-
                         onContentYChanged: { historyFlick.showHistBars = true; histBarTimer.restart() }
                         onContentXChanged: { historyFlick.showHistBars = true; histBarTimer.restart() }
                         onMovementStarted: { historyFlick.showHistBars = true; histBarTimer.restart() }
                         onMovementEnded: histBarTimer.restart()
-
                         ScrollBar.vertical: ScrollBar {
                             id: histVBar
                             policy: ScrollBar.AsNeeded
@@ -624,13 +581,10 @@ ApplicationWindow {
                             z: 100
                             width: 10
                             padding: 2
-
                             readonly property bool needed: historyFlick.contentHeight > historyFlick.height + 1
                             visible: needed
-
                             opacity: (needed && (historyFlick.showHistBars || pressed || hovered)) ? 1 : 0
                             Behavior on opacity { NumberAnimation { duration: 140 } }
-
                             background: Item {}
                             contentItem: Rectangle {
                                 implicitWidth: 6
@@ -639,7 +593,6 @@ ApplicationWindow {
                                 opacity: 0.9
                             }
                         }
-
                         ScrollBar.horizontal: ScrollBar {
                             id: histHBar
                             policy: ScrollBar.AsNeeded
@@ -647,13 +600,10 @@ ApplicationWindow {
                             z: 100
                             height: 10
                             padding: 2
-
                             readonly property bool needed: historyFlick.contentWidth > historyFlick.width + 1
                             visible: needed
-
                             opacity: (needed && (historyFlick.showHistBars || pressed || hovered)) ? 1 : 0
                             Behavior on opacity { NumberAnimation { duration: 140 } }
-
                             background: Item {}
                             contentItem: Rectangle {
                                 implicitHeight: 6
@@ -662,7 +612,6 @@ ApplicationWindow {
                                 opacity: 0.9
                             }
                         }
-
                         TextEdit {
                             id: historyText
                             x: 0
@@ -680,7 +629,7 @@ ApplicationWindow {
             }
         }
 
-        // ===== MODEL-DRIVEN KEYPAD (arrow navigation) =====
+        // ===== MODEL-DRIVEN KEYPAD =====
         GridLayout {
             id: keypad
             Layout.fillWidth: true
@@ -689,8 +638,6 @@ ApplicationWindow {
             rowSpacing: 8
             columnSpacing: 8
 
-            // key model: { label, type, value }
-            // type: "char" | "op" | "fn" | "enter" | "back"
             readonly property var keys: [
                 { label:"7",   type:"char", value:"7"   },
                 { label:"8",   type:"char", value:"8"   },
@@ -725,15 +672,9 @@ ApplicationWindow {
 
             function trigger(k) {
                 switch (k.type) {
-                    case "char":
-                        win.appendChar(k.value)
-                        break
-                    case "back":
-                        win.backspace()
-                        break
-                    case "enter":
-                        win.doEnter()
-                        break
+                    case "char": win.appendChar(k.value); break
+                    case "back": win.backspace(); break
+                    case "enter": win.doEnter(); break
                     case "op":
                         if      (k.value === "add") win.op(rpn.add)
                         else if (k.value === "sub") win.op(rpn.sub)
@@ -758,15 +699,12 @@ ApplicationWindow {
                 if (b) b.forceActiveFocus()
             }
 
-            // Link arrow navigation after items are created
             function relinkNav() {
                 const cols = keypad.columns
                 const n = keypadRep.count
-
                 for (let i = 0; i < n; i++) {
                     const b = keypadRep.itemAt(i)
                     if (!b) continue
-
                     const leftIndex  = (i % cols === 0) ? -1 : (i - 1)
                     const rightIndex = (i % cols === cols - 1) ? -1 : (i + 1)
                     const upIndex    = (i - cols >= 0) ? (i - cols) : -1
@@ -775,8 +713,6 @@ ApplicationWindow {
                     b.KeyNavigation.left  = (leftIndex  >= 0) ? keypadRep.itemAt(leftIndex)  : null
                     b.KeyNavigation.right = (rightIndex >= 0) ? keypadRep.itemAt(rightIndex) : null
                     b.KeyNavigation.down  = (downIndex  >= 0) ? keypadRep.itemAt(downIndex)  : null
-
-                    // Up: top row goes to input, otherwise normal
                     if (i < cols) b.KeyNavigation.up = input
                     else          b.KeyNavigation.up = keypadRep.itemAt(upIndex)
                 }
@@ -785,22 +721,17 @@ ApplicationWindow {
             Repeater {
                 id: keypadRep
                 model: keypad.keys
-
                 delegate: Button {
                     text: modelData.label
                     focusPolicy: Qt.StrongFocus
-
                     onClicked: keypad.trigger(modelData)
-
                     Keys.onReturnPressed: function(event) { clicked(); event.accepted = true }
                     Keys.onEnterPressed:  function(event) { clicked(); event.accepted = true }
                     Keys.onEscapePressed: function(event) { input.forceActiveFocus(); event.accepted = true }
                 }
-
                 onItemAdded: Qt.callLater(keypad.relinkNav)
                 onItemRemoved: Qt.callLater(keypad.relinkNav)
             }
-
             Component.onCompleted: Qt.callLater(relinkNav)
         }
 

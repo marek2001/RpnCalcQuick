@@ -35,6 +35,16 @@ public:
     bool dropTop();
     void clearAll();
 
+    // --- NOWE METODY DO UNDO/REDO ---
+    QVector<double> snapshot() const { return m_stack; }
+
+    void restore(const QVector<double> &data) {
+        beginResetModel();
+        m_stack = data;
+        endResetModel();
+    }
+    // --------------------------------
+
     // QML API
     Q_INVOKABLE void removeAt(int row);
     Q_INVOKABLE bool moveUp(int row);

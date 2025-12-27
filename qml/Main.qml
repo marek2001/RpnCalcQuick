@@ -588,7 +588,7 @@ ApplicationWindow {
             Button { text: "5"; onClicked: appendChar("5") }
             Button { text: "6"; onClicked: appendChar("6") }
             Button { text: "×"; onClicked: op(rpn.mul) }
-            Button { text: "÷"; onClicked: op(rpn.div) }
+            Button { text: "/"; onClicked: op(rpn.div) }
 
             Button { text: "1"; onClicked: appendChar("1") }
             Button { text: "2"; onClicked: appendChar("2") }

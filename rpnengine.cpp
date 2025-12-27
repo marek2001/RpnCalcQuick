@@ -15,11 +15,19 @@ RpnEngine::RpnEngine(QObject *parent) : QObject(parent) {
     m_model.setNumberFormat(m_formatMode, m_precision);
 }
 
+// [plik: rpnengine.cpp]
+
 void RpnEngine::appendHistoryLine(const QString &line)
 {
-    if (!m_historyText.isEmpty())
-        m_historyText += '\n';
-    m_historyText += line;
+    if (m_historyText.isEmpty()) {
+        // Jeśli historia jest pusta, po prostu przypisz linię
+        m_historyText = line;
+    } else {
+        // ZMIANA: Najpierw nowa linia, potem enter, potem stara reszta
+        // Dzięki temu najnowszy wpis ląduje na samej górze
+        m_historyText = line + '\n' + m_historyText;
+    }
+    
     emit historyTextChanged();
 }
 

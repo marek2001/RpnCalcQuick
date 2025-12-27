@@ -278,6 +278,7 @@ ApplicationWindow {
 
         // ===== stack + history =====
         SplitView {
+            id: panes
             Layout.fillWidth: true
             Layout.fillHeight: true
             orientation: Qt.Vertical
@@ -286,6 +287,7 @@ ApplicationWindow {
             Frame {
                 id: stackFrame
                 padding: 0
+                SplitView.preferredHeight: Math.round(panes.height * 0.65)
 
                 background: Rectangle {
                     radius: 10
@@ -548,7 +550,7 @@ ApplicationWindow {
             Frame {
                 id: historyFrame
                 padding: 6
-
+                SplitView.preferredHeight: Math.round(panes.height * 0.35)
                 background: Rectangle {
                     radius: 10
                     color: historyFrame.palette.window

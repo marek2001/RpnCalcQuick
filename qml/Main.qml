@@ -1,14 +1,9 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import RpnCalc.Backend 1.0
+import QtQml
 import Qt.labs.platform as Native
-import QtQuick
-import QtQuick.Controls
-import QtQuick.Layouts
-import QtQml // <--- DODAJ TO dla Instantiator
 import RpnCalc.Backend 1.0
-import Qt.labs.platform as Native
 
 ApplicationWindow {
     id: win
@@ -22,6 +17,10 @@ ApplicationWindow {
     minimumHeight: 640
     maximumWidth: 800
     maximumHeight: 1200
+
+    // Systemowy kolor akcentu (KDE/Qt style -> highlight)
+    readonly property color accentColor: win.palette.highlight
+
 
     // ===== Global Menu (KDE Plasma) =====
     Native.MenuBar {
@@ -59,15 +58,10 @@ ApplicationWindow {
             id: precisionMenu
             title: "Precision"
 
-            Native.MenuItemGroup {
-                id: precGroup
-                exclusive: true
-            }
+            Native.MenuItemGroup { id: precGroup; exclusive: true }
 
-            // Instantiator dynamicznie tworzy obiekty MenuItem
             Instantiator {
-                model: 16 // Generuje liczby od 0 do 15
-
+                model: 16 // 0..15
                 delegate: Native.MenuItem {
                     text: model.index.toString()
                     checkable: true
@@ -75,17 +69,16 @@ ApplicationWindow {
                     group: precGroup
                     onTriggered: rpn.precision = model.index
                 }
-
-                // Ważne: musimy ręcznie dodać stworzone elementy do menu
                 onObjectAdded: (index, object) => precisionMenu.insertItem(index, object)
                 onObjectRemoved: (index, object) => precisionMenu.removeItem(object)
             }
         }
+
         Native.Menu {
             title: "History"
             Native.MenuItem {
                 text: "Clear history"
-                onTriggered: rpn.historyModel.clear()
+                onTriggered: rpn.clearHistory()
             }
         }
     }
@@ -144,10 +137,7 @@ ApplicationWindow {
         onActivated: doEnter()
     }
     Shortcut { sequence: "Space"; onActivated: doEnter() }
-    Shortcut {
-        sequence: "Backspace"
-        onActivated: backspace()
-    }
+    Shortcut { sequence: "Backspace"; onActivated: backspace() }
 
     // --- OPERATORY BINARNE ---
     Shortcut { sequence: "+"; onActivated: op(rpn.add) }
@@ -169,7 +159,6 @@ ApplicationWindow {
     Shortcut { sequence: "X"; onActivated: op(rpn.drop) }
     Shortcut { sequence: "R"; onActivated: op(rpn.sqrt) }
     Shortcut { sequence: "W"; onActivated: op(rpn.swap) }
-
 
     // ===== toast =====
     Popup {
@@ -236,32 +225,19 @@ ApplicationWindow {
             Keys.onEnterPressed: doEnter()
 
             Keys.onPressed: (event) => {
-                // pozwól normalnie działać Backspace
-                if (event.key === Qt.Key_Backspace)
-                    return
-
-                // Enter obsługujesz wyżej
-                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-                    return
+                if (event.key === Qt.Key_Backspace) return
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) return
 
                 let handled = true
 
-                // najpierw klawisze z numpada i „key codes”
                 switch (event.key) {
-                    case Qt.Key_Plus:
-                        op(rpn.add); break
-                    case Qt.Key_Minus:
-                        op(rpn.sub); break
-                    case Qt.Key_Asterisk:
-                        op(rpn.mul); break
-                    case Qt.Key_Slash:
-                        op(rpn.div); break
-                    default:
-                        handled = false
-                        break
+                    case Qt.Key_Plus:     op(rpn.add); break
+                    case Qt.Key_Minus:    op(rpn.sub); break
+                    case Qt.Key_Asterisk: op(rpn.mul); break
+                    case Qt.Key_Slash:    op(rpn.div); break
+                    default: handled = false; break
                 }
 
-                // jeśli nie złapaliśmy po key, spróbuj po tekście (zwykła klawiatura)
                 if (!handled) {
                     handled = true
                     switch (event.text) {
@@ -270,14 +246,11 @@ ApplicationWindow {
                         case "*": op(rpn.mul); break
                         case "/": op(rpn.div); break
                         case "^": op(rpn.pow); break
-                        default:
-                            handled = false
-                            break
+                        default: handled = false; break
                     }
                 }
 
                 if (handled) {
-                    // nie wpisuj operatora do pola
                     event.accepted = true
                     input.forceActiveFocus()
                 }
@@ -335,16 +308,67 @@ ApplicationWindow {
                         currentIndex: -1
                         property int rowHeight: 40
 
-                        highlightFollowsCurrentItem: true
-                        highlightMoveDuration: 60
+                        // żeby overlay suwak nie nachodził na X
+                        property int vbarWidth: 10
+
+                        // pokaż suwak na scroll i schowaj po chwili
+                        property bool showStackBar: false
+
+                        Timer {
+                            id: stackBarTimer
+                            interval: 700
+                            repeat: false
+                            onTriggered: stackList.showStackBar = false
+                        }
+
+                        onContentYChanged: {
+                            stackList.showStackBar = true
+                            stackBarTimer.restart()
+                        }
+                        onMovementStarted: {
+                            stackList.showStackBar = true
+                            stackBarTimer.restart()
+                        }
+                        onMovementEnded: stackBarTimer.restart()
+
+                        // ===== SYSTEMOWY OVERLAY SCROLLBAR (akcent) =====
+                        ScrollBar.vertical: ScrollBar {
+                            id: stackVBar
+                            policy: ScrollBar.AsNeeded
+                            hoverEnabled: true
+                            z: 100
+
+                            width: stackList.vbarWidth
+                            padding: 2
+
+                            readonly property bool needed: stackList.contentHeight > stackList.height + 1
+                            visible: needed
+
+                            opacity: (needed && (stackList.showStackBar || pressed || hovered)) ? 1 : 0
+                            Behavior on opacity { NumberAnimation { duration: 140 } }
+
+                            background: Item {}
+                            contentItem: Rectangle {
+                                implicitWidth: 6
+                                radius: width / 2
+                                color: win.accentColor
+                                opacity: 0.9
+                            }
+                        }
 
                         delegate: Item {
                             id: rowItem
                             width: stackList.width
                             height: stackList.rowHeight
                             property bool editing: false
-                            
-                            Rectangle { anchors.fill: parent; color: stackFrame.palette.base }
+
+                            readonly property bool isSelected: ListView.isCurrentItem
+
+                            Rectangle {
+                                anchors.fill: parent
+                                color: rowItem.isSelected ? stackFrame.palette.highlight : stackFrame.palette.base
+                            }
+
                             Rectangle {
                                 anchors.left: parent.left
                                 anchors.right: parent.right
@@ -353,84 +377,55 @@ ApplicationWindow {
                                 color: stackFrame.palette.mid
                             }
 
-                            // klik wiersza (zaznacz), ale NIE przykrywa pola edycji ani X
                             MouseArea {
                                 anchors.left: parent.left
                                 anchors.right: removeBtn.left
                                 anchors.top: parent.top
                                 anchors.bottom: parent.bottom
+                                visible: !rowItem.editing
                                 onClicked: {
                                     stackList.currentIndex = index
                                     input.forceActiveFocus()
                                 }
                             }
 
-                            // Właściwość pomocnicza sprawdzająca czy ten wiersz jest wybrany
-                            readonly property bool isSelected: ListView.isCurrentItem
-
-                            // TŁO WIERSZA
-                            Rectangle {
-                                anchors.fill: parent
-                                // Jeśli wybrany -> kolor podświetlenia (highlight), jeśli nie -> kolor bazowy (base)
-                                color: rowItem.isSelected ? stackFrame.palette.highlight : stackFrame.palette.base
-
-                                // Opcjonalnie: lekka przezroczystość, jeśli kolor podświetlenia jest zbyt intensywny
-                                // opacity: rowItem.isSelected ? 0.7 : 1.0 
-                            }
-
-                            // 1. NUMER INDEKSU
                             Text {
                                 id: idxText
                                 anchors.left: parent.left
                                 anchors.leftMargin: 12
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: (index + 1).toString()
-
-                                // Pamiętaj o kolorze z poprzedniego kroku (podświetlenie)
                                 color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.text
                                 font.family: "Monospace"
                             }
 
-                            // 2. NOWOŚĆ: PIONOWA LINIA ROZDZIELAJĄCA
                             Rectangle {
                                 id: vSep
                                 width: 1
-
-                                // Ustawiamy linię obok indeksu z odstępem
                                 anchors.left: idxText.right
                                 anchors.leftMargin: 12
-
-                                // Rozciągamy linię góra-dół z małym marginesem (żeby nie dotykała krawędzi)
                                 anchors.top: parent.top
                                 anchors.bottom: parent.bottom
                                 anchors.topMargin: 4
                                 anchors.bottomMargin: 4
-
-                                // Kolor linii (dopasowany do ramki, lub jaśniejszy na podświetleniu)
                                 color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.mid
-                                opacity: 0.5 // Lekka przezroczystość, żeby linia nie była zbyt agresywna
+                                opacity: 0.5
                             }
 
-                            // 3. WARTOŚĆ (zaktualizowane zakotwiczenie)
                             Text {
                                 id: valueText
-
-                                // ZMIANA: Teraz przyklejamy się do linii (vSep), a nie do idxText
                                 anchors.left: vSep.right
                                 anchors.leftMargin: 12
-
                                 anchors.right: removeBtn.left
                                 anchors.rightMargin: 12
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: model.value
                                 visible: !rowItem.editing
-
-                                // Kolor z poprzedniego kroku
                                 color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.text
                                 font.family: "Monospace"
                                 elide: Text.ElideLeft
                             }
-                            // Dwuklik na wartość -> edycja
+
                             MouseArea {
                                 anchors.fill: valueText
                                 enabled: !rowItem.editing
@@ -443,10 +438,9 @@ ApplicationWindow {
                                 }
                             }
 
-                            // WARTOŚĆ (tryb edycji)
                             TextField {
                                 id: editField
-                                anchors.left: idxText.right
+                                anchors.left: vSep.right
                                 anchors.leftMargin: 12
                                 anchors.right: removeBtn.left
                                 anchors.rightMargin: 12
@@ -455,8 +449,6 @@ ApplicationWindow {
                                 visible: rowItem.editing
                                 font.family: "Monospace"
                                 selectByMouse: true
-
-                                // WAŻNE: przechwytuj Enter zanim zrobi to globalny Shortcut
                                 Keys.priority: Keys.BeforeItem
 
                                 function commit() {
@@ -478,26 +470,22 @@ ApplicationWindow {
                                     input.forceActiveFocus()
                                 }
 
-                                // Klik poza pole / utrata fokusu -> zakończ edycję (tu: zapis)
                                 onEditingFinished: {
                                     if (rowItem.editing) commit()
                                 }
                             }
-                            // Klik w wiersz podczas edycji -> zapis (lub możesz tu dać anuluj)
+
                             MouseArea {
                                 anchors.fill: parent
                                 visible: rowItem.editing
                                 z: 999
                                 onClicked: editField.commit()
-                                // jeśli wolisz anulować:
-                                // onClicked: { rowItem.editing = false; input.forceActiveFocus() }
                             }
 
-                            // X usuwa
                             ToolButton {
                                 id: removeBtn
                                 anchors.right: parent.right
-                                anchors.rightMargin: 6
+                                anchors.rightMargin: 6 + stackList.vbarWidth
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 34
                                 height: 34
@@ -557,7 +545,6 @@ ApplicationWindow {
             }
 
             // ---- HISTORY ----
-            // ---- HISTORY (TextBox) ----
             Frame {
                 id: historyFrame
                 padding: 6
@@ -575,30 +562,117 @@ ApplicationWindow {
 
                     RowLayout {
                         Layout.fillWidth: true
-
                         Label { text: "History"; opacity: 0.85 }
                         Item { Layout.fillWidth: true }
-
-                        ToolButton {
-                            text: "Clear"
-                            onClicked: rpn.clearHistory()
-                        }
+                        ToolButton { text: "Clear"; onClicked: rpn.clearHistory() }
                     }
 
-                    ScrollView {
+                    // ===== WERSJA "SYSTEMOWA": Flickable + TextEdit (pewne scrollbary) =====
+                    Flickable {
+                        id: historyFlick
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         clip: true
 
-                        TextArea {
-                            id: historyBox
+                        boundsBehavior: Flickable.StopAtBounds
+                        flickableDirection: Flickable.AutoFlickDirection
+
+                        // content z TextEdit
+                        contentWidth: historyText.implicitWidth
+                        contentHeight: historyText.implicitHeight
+
+                        // pokaż suwaki po scrollu i schowaj po chwili
+                        property bool showHistBars: false
+
+                        Timer {
+                            id: histBarTimer
+                            interval: 700
+                            repeat: false
+                            onTriggered: historyFlick.showHistBars = false
+                        }
+
+                        onContentYChanged: {
+                            historyFlick.showHistBars = true
+                            histBarTimer.restart()
+                        }
+                        onContentXChanged: {
+                            historyFlick.showHistBars = true
+                            histBarTimer.restart()
+                        }
+                        onMovementStarted: {
+                            historyFlick.showHistBars = true
+                            histBarTimer.restart()
+                        }
+                        onMovementEnded: histBarTimer.restart()
+
+                        // pionowy overlay
+                        ScrollBar.vertical: ScrollBar {
+                            id: histVBar
+                            policy: ScrollBar.AsNeeded
+                            hoverEnabled: true
+                            z: 100
+
+                            width: 10
+                            padding: 2
+
+                            readonly property bool needed: historyFlick.contentHeight > historyFlick.height + 1
+                            visible: needed
+
+                            opacity: (needed && (historyFlick.showHistBars || pressed || hovered)) ? 1 : 0
+                            Behavior on opacity { NumberAnimation { duration: 140 } }
+
+                            background: Item {}
+                            contentItem: Rectangle {
+                                implicitWidth: 6
+                                radius: width / 2
+                                color: win.accentColor
+                                opacity: 0.9
+                            }
+                        }
+
+                        // poziomy overlay
+                        ScrollBar.horizontal: ScrollBar {
+                            id: histHBar
+                            policy: ScrollBar.AsNeeded
+                            hoverEnabled: true
+                            z: 100
+
+                            height: 10
+                            padding: 2
+
+                            readonly property bool needed: historyFlick.contentWidth > historyFlick.width + 1
+                            visible: needed
+
+                            opacity: (needed && (historyFlick.showHistBars || pressed || hovered)) ? 1 : 0
+                            Behavior on opacity { NumberAnimation { duration: 140 } }
+
+                            background: Item {}
+                            contentItem: Rectangle {
+                                implicitHeight: 6
+                                radius: height / 2
+                                color: win.accentColor
+                                opacity: 0.9
+                            }
+                        }
+
+                        TextEdit {
+                            id: historyText
+                            x: 0
+                            y: 0
+
                             text: rpn.historyText
                             readOnly: true
-                            wrapMode: Text.NoWrap
                             selectByMouse: true
-                            persistentSelection: true
+
+                            // brak zawijania, żeby poziomy scroll miał sens
+                            wrapMode: TextEdit.NoWrap
+
                             font.family: "Monospace"
-                            background: null
+                            color: historyFrame.palette.text
+
+                            // ważne: niech tekst ma co najmniej szerokość viewportu,
+                            // ale może być szerszy (wtedy poziomy scroll działa)
+                            width: Math.max(historyFlick.width, implicitWidth)
                         }
                     }
                 }

@@ -33,9 +33,11 @@ void RpnEngine::appendHistoryLine(const QString &line)
 
 void RpnEngine::clearHistory()
 {
+    m_history.clear();      // jeśli zostawiasz model
     m_historyText.clear();
     emit historyTextChanged();
 }
+
 
 void RpnEngine::error(const QString &msg)
 {

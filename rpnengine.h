@@ -65,6 +65,16 @@ public:
     RpnHistoryModel* historyModel() { return &m_history; }
     QString topAsString() const;
 
+    Q_INVOKABLE QString stackJson() const;
+    Q_INVOKABLE void setStackJson(const QString &json);
+
+    Q_INVOKABLE QString history() const;
+    Q_INVOKABLE void setHistory(const QString &text);
+
+    Q_INVOKABLE void saveSessionState() const;
+    Q_INVOKABLE void loadSessionState();
+    
+
 signals:
     void errorOccurred(const QString &message);
     void formatModeChanged();

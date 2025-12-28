@@ -9,6 +9,10 @@ import RpnCalc.Backend 1.0
 ApplicationWindow {
     id: win
     RpnEngine { id: rpn }
+    Component.onCompleted: rpn.loadSessionState()
+    onClosing: rpn.saveSessionState()
+
+
 
     width: 500
     height: 720

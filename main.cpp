@@ -12,6 +12,8 @@ int main(int argc, char *argv[])
     
     QQuickStyle::setStyle("org.kde.desktop");
     QGuiApplication::setDesktopFileName("org.mar.RpnCalc");
+    QCoreApplication::setOrganizationName("marek2001");
+    QCoreApplication::setApplicationName("RpnCalcQuick");
     qmlRegisterType<RpnEngine>("RpnCalc.Backend", 1, 0, "RpnEngine");
 
     QQmlApplicationEngine engine;

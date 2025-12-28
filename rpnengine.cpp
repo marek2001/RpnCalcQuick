@@ -2,6 +2,13 @@
 
 #include <QLocale>
 #include <cmath>
+#include <QSettings>
+#include <QJsonDocument>
+#include <QJsonParseError>
+#include <QJsonArray>
+#include <QJsonValue>
+
+
 
 // Pomocnicze: ładne logowanie wyniku (TOP)
 QString RpnEngine::topAsString() const
@@ -393,3 +400,109 @@ void RpnEngine::restoreState(const EngineState &s)
 
     emit historyTextChanged();
 }
+
+void RpnEngine::saveSessionState() const
+{
+    // Use explicit organization/app to avoid relying on QCoreApplication metadata
+    QSettings s("marek2001", "RpnCalcQuick");
+
+    // --- stack ---
+    const QVector<double> snap = m_model.snapshot();
+    QVariantList list;
+    list.reserve(snap.size());
+    for (double v : snap)
+        list.push_back(v);
+
+    s.setValue("session/stack", list);
+
+    // --- history ---
+    s.setValue("session/historyText", m_historyText);
+
+    // --- formatting settings ---
+    s.setValue("session/formatMode", m_formatMode);
+    s.setValue("session/precision", m_precision);
+
+    s.sync();
+}
+
+void RpnEngine::loadSessionState()
+{
+    QSettings s("marek2001", "RpnCalcQuick");
+
+    // --- formatting first (so display updates correctly) ---
+    const int mode = s.value("session/formatMode", m_formatMode).toInt();
+    const int prec = s.value("session/precision", m_precision).toInt();
+
+    setFormatMode(mode);
+    setPrecision(prec);
+
+    // --- stack ---
+    const QVariant v = s.value("session/stack");
+    const QVariantList list = v.toList();
+
+    if (!list.isEmpty()) {
+        QVector<double> snap;
+        snap.reserve(list.size());
+        for (const QVariant &item : list)
+            snap.push_back(item.toDouble());
+
+        m_model.restore(snap);
+    }
+
+    // --- history ---
+    m_historyText = s.value("session/historyText", "").toString();
+    emit historyTextChanged();
+}
+
+QString RpnEngine::stackJson() const
+{
+    const QVector<double> snap = m_model.snapshot();
+
+    QJsonArray arr;
+    for (double v : snap)
+        arr.append(v);
+
+    return QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact));
+}
+
+void RpnEngine::setStackJson(const QString &json)
+{
+    QJsonParseError err{};
+    const QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8(), &err);
+
+    if (err.error != QJsonParseError::NoError || !doc.isArray()) {
+        error(QString("Invalid stack JSON: %1").arg(err.errorString()));
+        return;
+    }
+
+    const QJsonArray arr = doc.array();
+    QVector<double> snap;
+    snap.reserve(arr.size());
+
+    for (const QJsonValue &v : arr) {
+        if (!v.isDouble()) {
+            error("Invalid stack JSON: non-number element.");
+            return;
+        }
+        snap.push_back(v.toDouble());
+    }
+
+    // restore stack without creating undo step
+    m_model.restore(snap);
+}
+
+QString RpnEngine::history() const
+{
+    return m_historyText;
+}
+
+void RpnEngine::setHistory(const QString &h)
+{
+    if (m_historyText == h) return;
+
+    m_historyText = h;
+    emit historyTextChanged();
+}
+
+
+

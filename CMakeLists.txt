@@ -21,5 +21,5 @@ qt_add_qml_module(appRpnCalcQuick
         QML_FILES
         qml/Main.qml
 )
-find_package(Qt6 REQUIRED COMPONENTS Quick Qml QuickControls2)
-target_link_libraries(appRpnCalcQuick PRIVATE Qt6::Quick Qt6::Qml Qt6::QuickControls2)
+find_package(Qt6 REQUIRED COMPONENTS Quick Qml QuickControls2 Widgets)
+target_link_libraries(appRpnCalcQuick PRIVATE Qt6::Quick Qt6::Qml Qt6::QuickControls2 Qt6::Widgets)

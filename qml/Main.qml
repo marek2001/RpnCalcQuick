@@ -154,6 +154,26 @@ ApplicationWindow {
             Native.MenuItem { text: "Undo"; shortcut: "Ctrl+Z";        enabled: rpn.canUndo; onTriggered: rpn.undo() }
             Native.MenuItem { text: "Redo"; shortcut: StandardKey.Redo; enabled: rpn.canRedo; onTriggered: rpn.redo() }
         }
+        Native.Menu {
+            title: "Help"
+
+            Native.MenuItem {
+                text: "Open GitHub Repository"
+                onTriggered: Qt.openUrlExternally(win.repoUrl)
+            }
+
+            Native.MenuItem {
+                text: "Instructions"
+                onTriggered: Qt.openUrlExternally(win.docsUrl)
+            }
+
+            Native.MenuSeparator { }
+
+            Native.MenuItem {
+                text: "About"
+                onTriggered: aboutDialog.open()
+            }
+        }
     }
 
     // ===== shortcuts =====
@@ -201,6 +221,21 @@ ApplicationWindow {
     Shortcut { sequence: "X"; onActivated: op(rpn.drop) }
     Shortcut { sequence: "R"; onActivated: op(rpn.sqrt) }
     Shortcut { sequence: "W"; onActivated: op(rpn.swap) }
+    
+    // ===== Help / About =====
+    readonly property string repoUrl: "https://github.com/marek2001/RpnCalcQuick/"
+    readonly property string docsUrl: repoUrl + "#readme"   // or a direct docs page
+
+    Native.MessageDialog {
+        id: aboutDialog
+        title: "About RPN Calculator"
+        text: "RPN Calculator (Qt Quick)\n\n" +
+            "• Stack-based calculator (Reverse Polish Notation)\n" +
+            "• Scientific / Engineering / Simple formatting\n" +
+            "• Shortcuts: Enter=push, Shift+Up/Down=move stack\n\n" +
+            "Built with Qt Quick Controls."
+        buttons: Native.MessageDialog.Ok
+    }
 
     // ===== toast =====
     Popup {

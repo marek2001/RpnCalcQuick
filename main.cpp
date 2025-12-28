@@ -1,18 +1,17 @@
-#include <QGuiApplication>
+#include <QApplication>
 #include <QQmlApplicationEngine>
 #include <QtQml/qqml.h>
 
-#include <QtQuickControls2/QQuickStyle>   // <-- TO DODAJ
+#include <QtQuickControls2/QQuickStyle>
 
 #include "rpnengine.h"
 
 int main(int argc, char *argv[])
 {
-    QGuiApplication app(argc, argv);
-
-    // Ustaw styl ZANIM załadujesz QML (czyli przed engine.load...)
-    QQuickStyle::setStyle("org.kde.desktop");  // albo "Breeze" jako fallback
-
+    QApplication app(argc, argv);
+    
+    QQuickStyle::setStyle("org.kde.desktop");
+    QGuiApplication::setDesktopFileName("org.mar.RpnCalc");
     qmlRegisterType<RpnEngine>("RpnCalc.Backend", 1, 0, "RpnEngine");
 
     QQmlApplicationEngine engine;

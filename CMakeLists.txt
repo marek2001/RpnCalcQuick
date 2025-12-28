@@ -4,22 +4,28 @@ project(RpnCalcQuick LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.2 REQUIRED COMPONENTS Quick Qml)
+find_package(Qt6 6.2 REQUIRED COMPONENTS Quick Qml QuickControls2 Widgets)
 
 qt_standard_project_setup()
 
-qt_add_executable(appRpnCalcQuick
+qt_add_executable(appRpnCalcQuick MANUAL_FINALIZATION
         main.cpp
         rpnengine.cpp
         rpnstackmodel.cpp
+        rpnhistorymodel.cpp
         rpnhistorymodel.h
 )
+
 
 qt_add_qml_module(appRpnCalcQuick
         URI RpnCalc
         VERSION 1.0
         QML_FILES
-        qml/Main.qml
+        Main.qml
 )
-find_package(Qt6 REQUIRED COMPONENTS Quick Qml QuickControls2 Widgets)
-target_link_libraries(appRpnCalcQuick PRIVATE Qt6::Quick Qt6::Qml Qt6::QuickControls2 Qt6::Widgets)
+
+target_link_libraries(appRpnCalcQuick PRIVATE
+        Qt6::Quick Qt6::Qml Qt6::QuickControls2 Qt6::Widgets
+)
+
+qt_finalize_executable(appRpnCalcQuick)

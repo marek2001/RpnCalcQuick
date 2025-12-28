@@ -606,7 +606,8 @@ ApplicationWindow {
 
                                     Keys.onReturnPressed: function(e) { commit(); e.accepted = true }
                                     Keys.onEnterPressed:  function(e) { commit(); e.accepted = true }
-                                    Keys.onEscapePressed: function(e) { rowItem.editing = false; input.forceActiveFocus(); e.accepted = true }
+                                    Keys.onEscapePressed: function(e) { rowItem.editing = false;
+                                        input.forceActiveFocus(); e.accepted = true }
                                     onEditingFinished: { if (rowItem.editing) commit() }
                                 }
 

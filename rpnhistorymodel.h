@@ -8,8 +8,8 @@ public:
     enum Roles { TextRole = Qt::UserRole + 1 };
     Q_ENUM(Roles)
 
-    explicit RpnHistoryModel(QObject *parent = nullptr) : QAbstractListModel(parent) {}
-
+    explicit RpnHistoryModel(QObject *parent = nullptr);
+    ~RpnHistoryModel() override;
     int rowCount(const QModelIndex &parent = QModelIndex()) const override {
         if (parent.isValid()) return 0;
         return m_items.size();

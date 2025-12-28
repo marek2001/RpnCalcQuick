@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQml
 import Qt.labs.platform as Native
+import Qt5Compat.GraphicalEffects
 import RpnCalc.Backend 1.0
 
 ApplicationWindow {
@@ -157,9 +158,6 @@ ApplicationWindow {
     }
 
     // ===== shortcuts =====
-
-    // ENTER / RETURN: always push input (works even when keypad button focused)
-    // but DON'T fire while editing a stack value (editField should own Enter)
     Shortcut {
         sequence: "Return"
         context: Qt.ApplicationShortcut
@@ -173,9 +171,6 @@ ApplicationWindow {
         onActivated: win.doEnter()
     }
 
-    // Backspace edits input even when focus is elsewhere,
-    // but NOT when input itself is focused (avoid double-delete),
-    // and NOT when stack editField is active.
     Shortcut {
         sequence: "Backspace"
         context: Qt.ApplicationShortcut
@@ -183,14 +178,41 @@ ApplicationWindow {
         onActivated: win.backspace()
     }
 
-    // Digits: work from numpad even when focus is on keypad/list/etc.
-    // (Repeater needs Item delegate, so we wrap Shortcut inside an invisible Item.)
+    // Move selected stack item up (Shift+Up)
+    Shortcut {
+        sequence: "Shift+Up"
+        context: Qt.ApplicationShortcut
+        enabled: !win.stackEditing && stackList.currentIndex > 0
+        onActivated: {
+            const i = stackList.currentIndex
+            if (rpn.stackModel.moveUp(i)) {
+                stackList.currentIndex = i - 1
+                stackList.positionViewAtIndex(stackList.currentIndex, ListView.Visible)
+            }
+        }
+    }
+
+    // Move selected stack item down (Shift+Down)
+    Shortcut {
+        sequence: "Shift+Down"
+        context: Qt.ApplicationShortcut
+        enabled: !win.stackEditing && stackList.currentIndex >= 0 && stackList.currentIndex < stackList.count - 1
+        onActivated: {
+            const i = stackList.currentIndex
+            if (rpn.stackModel.moveDown(i)) {
+                stackList.currentIndex = i + 1
+                stackList.positionViewAtIndex(stackList.currentIndex, ListView.Visible)
+            }
+        }
+    }
+
+    // Digits: work even when focus is elsewhere
     Repeater {
         model: 10
         delegate: Item {
             visible: false
             Shortcut {
-                sequence: modelData.toString()         // "0".."9"
+                sequence: modelData.toString()
                 context: Qt.ApplicationShortcut
                 enabled: win.allowGlobalTyping
                 onActivated: win.appendChar(modelData.toString())
@@ -198,7 +220,6 @@ ApplicationWindow {
         }
     }
 
-    // Decimal: "." or "," (we map both to ".")
     Item {
         visible: false
         Shortcut {
@@ -228,7 +249,7 @@ ApplicationWindow {
     Shortcut { sequence: "^"; onActivated: op(rpn.pow) }
 
     Shortcut { sequence: "Multiply"; onActivated: op(rpn.mul) }
-    Shortcut { sequence: "Divide"; onActivated: op(rpn.div) }
+    Shortcut { sequence: "Divide";   onActivated: op(rpn.div) }
     Shortcut { sequence: "Add";      onActivated: op(rpn.add) }
     Shortcut { sequence: "Subtract"; onActivated: op(rpn.sub) }
 
@@ -294,8 +315,6 @@ ApplicationWindow {
             horizontalAlignment: Text.AlignRight
             inputMethodHints: Qt.ImhFormattedNumbersOnly
             focus: true
-
-            // Enter is handled globally (ApplicationShortcut) so it works everywhere.
 
             Keys.onDownPressed: function(event) { keypad.focusFirst(); event.accepted = true }
 
@@ -421,229 +440,259 @@ ApplicationWindow {
                 padding: 0
                 SplitView.minimumHeight: 200
 
+                // Rounded border
                 background: Rectangle {
-                    radius: 10
+                    id: stackBg
+                    anchors.fill: parent
+                    radius: 12
                     color: stackFrame.palette.window
                     border.color: stackFrame.palette.mid
                     border.width: 1
                 }
 
-                RowLayout {
+                // REAL rounded clipping via OpacityMask (Rectangle radius is now respected)
+                Item {
+                    id: stackClip
                     anchors.fill: parent
-                    spacing: 0
+                    anchors.margins: stackBg.border.width
 
-                    ListView {
-                        id: stackList
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        clip: true
-                        model: rpn.stackModel
-                        currentIndex: -1
-
-                        property int rowHeight: 40
-                        property int vbarWidth: 10
-                        property bool showStackBar: false
-                        HoverHandler {
-                            id: stackHover
-                            // target domyślnie = parent, czyli stackList
-                        }
-
-                        Timer {
-                            id: stackBarTimer
-                            interval: 700
-                            repeat: false
-                            onTriggered: stackList.showStackBar = false
-                        }
-                        onContentYChanged: { stackList.showStackBar = true; stackBarTimer.restart() }
-                        onMovementStarted: { stackList.showStackBar = true; stackBarTimer.restart() }
-                        onMovementEnded: stackBarTimer.restart()
-
-                        ScrollBar.vertical: ScrollBar {
-                            id: stackVBar
-                            policy: ScrollBar.AsNeeded
-                            hoverEnabled: true
-                            z: 100
-
-                            // exact right edge feel
-                            width: 12
-                            padding: 2
-
-                            // show when needed (no reliance on hover)
-                            readonly property bool needed: stackList.contentHeight > stackList.height + 1
-                            visible: needed
-                            opacity: needed ? 1 : 0
-                            Behavior on opacity { NumberAnimation { duration: 120 } }
-                        }
-                        delegate: Item {
-                            id: rowItem
-                            width: stackList.width
-                            height: stackList.rowHeight
-                            property bool editing: false
-                            readonly property bool isSelected: ListView.isCurrentItem
-
-                            Rectangle {
-                                anchors.fill: parent
-                                color: rowItem.isSelected ? stackFrame.palette.highlight : stackFrame.palette.base
-                            }
-                            Rectangle {
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                anchors.bottom: parent.bottom
-                                height: 1
-                                color: stackFrame.palette.mid
-                            }
-
-                            MouseArea {
-                                anchors.left: parent.left
-                                anchors.right: removeBtn.left
-                                anchors.top: parent.top
-                                anchors.bottom: parent.bottom
-                                visible: !rowItem.editing
-                                onClicked: { stackList.currentIndex = index; input.forceActiveFocus() }
-                            }
-
-                            Text {
-                                id: idxText
-                                anchors.left: parent.left
-                                anchors.leftMargin: 12
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: (index + 1).toString()
-                                color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.text
-                                font.family: "Monospace"
-                            }
-
-                            Rectangle {
-                                id: vSep
-                                width: 1
-                                anchors.left: idxText.right
-                                anchors.leftMargin: 12
-                                anchors.top: parent.top
-                                anchors.bottom: parent.bottom
-                                anchors.topMargin: 4
-                                anchors.bottomMargin: 4
-                                color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.mid
-                                opacity: 0.5
-                            }
-
-                            Text {
-                                id: valueText
-                                anchors.left: vSep.right
-                                anchors.leftMargin: 12
-                                anchors.right: removeBtn.left
-                                anchors.rightMargin: 12
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: model.value
-                                visible: !rowItem.editing
-                                color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.text
-                                font.family: "Monospace"
-                                elide: Text.ElideLeft
-                            }
-
-                            MouseArea {
-                                anchors.fill: valueText
-                                enabled: !rowItem.editing
-                                onDoubleClicked: {
-                                    stackList.currentIndex = index
-                                    rowItem.editing = true
-                                    editField.text = model.value
-                                    editField.forceActiveFocus()
-                                    editField.selectAll()
-                                }
-                            }
-
-                            TextField {
-                                id: editField
-                                anchors.left: vSep.right
-                                anchors.leftMargin: 12
-                                anchors.right: removeBtn.left
-                                anchors.rightMargin: 12
-                                anchors.verticalCenter: parent.verticalCenter
-                                height: 30
-                                visible: rowItem.editing
-                                font.family: "Monospace"
-                                selectByMouse: true
-                                Keys.priority: Keys.BeforeItem
-
-                                function commit() {
-                                    if (rpn.stackModel.setValueAt(index, text)) {
-                                        rowItem.editing = false
-                                        input.forceActiveFocus()
-                                    } else {
-                                        toast.show("Nieprawidłowa liczba")
-                                        forceActiveFocus()
-                                        selectAll()
-                                    }
-                                }
-
-                                Keys.onReturnPressed: function(event) { commit(); event.accepted = true }
-                                Keys.onEnterPressed:  function(event) { commit(); event.accepted = true }
-                                Keys.onEscapePressed: function(event) { rowItem.editing = false; input.forceActiveFocus(); event.accepted = true }
-                                onEditingFinished: { if (rowItem.editing) commit() }
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                visible: rowItem.editing
-                                z: 999
-                                onClicked: editField.commit()
-                            }
-
-                            ToolButton {
-                                id: removeBtn
-                                anchors.right: parent.right
-                                anchors.rightMargin: 6 + stackVBar.width
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 34
-                                height: 34
-                                text: "✕"
-                                onClicked: win.removeStackAt(index)
-                            }
+                    layer.enabled: true
+                    layer.smooth: true
+                    layer.effect: OpacityMask {
+                        maskSource: Rectangle {
+                            width: stackClip.width
+                            height: stackClip.height
+                            radius: Math.max(0, stackBg.radius - stackBg.border.width)
+                            color: "white"
                         }
                     }
 
-                    Frame {
-                        id: arrows
-                        Layout.preferredWidth: 48
-                        Layout.fillHeight: true
-                        padding: 6
+                    RowLayout {
+                        anchors.fill: parent
+                        spacing: 0
 
-                        background: Rectangle {
-                            color: arrows.palette.window
-                            border.color: arrows.palette.mid
-                            border.width: 1
+                        ListView {
+                            id: stackList
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+                            model: rpn.stackModel
+                            currentIndex: -1
+
+                            property int rowHeight: 40
+                            property bool showStackBar: false
+
+                            Timer {
+                                id: stackBarTimer
+                                interval: 700
+                                repeat: false
+                                onTriggered: stackList.showStackBar = false
+                            }
+                            onContentYChanged: { stackList.showStackBar = true; stackBarTimer.restart() }
+                            onMovementStarted: { stackList.showStackBar = true; stackBarTimer.restart() }
+                            onMovementEnded: stackBarTimer.restart()
+
+                            ScrollBar.vertical: ScrollBar {
+                                id: stackVBar
+                                policy: ScrollBar.AsNeeded
+                                hoverEnabled: true
+                                z: 100
+                                width: 12
+                                padding: 2
+                                readonly property bool needed: stackList.contentHeight > stackList.height + 1
+                                visible: needed
+                                opacity: needed ? 1 : 0
+                                Behavior on opacity { NumberAnimation { duration: 120 } }
+                            }
+
+                            delegate: Item {
+                                id: rowItem
+                                width: stackList.width
+                                height: stackList.rowHeight
+                                property bool editing: false
+                                readonly property bool isSelected: ListView.isCurrentItem
+
+                                HoverHandler { id: hoverH }
+
+                                Rectangle {
+                                    anchors.fill: parent
+
+                                    // selected is Breeze highlight, hover is purple-tinted (accent-based)
+                                    color: rowItem.isSelected
+                                        ? stackFrame.palette.highlight
+                                        : (hoverH.hovered ? Qt.lighter(win.palette.highlight, 1.6) : stackFrame.palette.base)
+
+                                    opacity: rowItem.isSelected ? 1.0 : (hoverH.hovered ? 0.22 : 1.0)
+
+                                    Behavior on color { ColorAnimation { duration: 80 } }
+                                    Behavior on opacity { NumberAnimation { duration: 80 } }
+                                }
+
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    height: 1
+                                    color: stackFrame.palette.mid
+                                }
+
+                                MouseArea {
+                                    anchors.left: parent.left
+                                    anchors.right: removeBtn.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    visible: !rowItem.editing
+                                    onClicked: { stackList.currentIndex = index; input.forceActiveFocus() }
+                                }
+
+                                Text {
+                                    id: idxText
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 12
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: (index + 1).toString()
+                                    color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.text
+                                    font.family: "Monospace"
+                                }
+
+                                Rectangle {
+                                    id: vSep
+                                    width: 1
+                                    anchors.left: idxText.right
+                                    anchors.leftMargin: 12
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    anchors.topMargin: 4
+                                    anchors.bottomMargin: 4
+                                    color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.mid
+                                    opacity: 0.5
+                                }
+
+                                Text {
+                                    id: valueText
+                                    anchors.left: vSep.right
+                                    anchors.leftMargin: 12
+                                    anchors.right: removeBtn.left
+                                    anchors.rightMargin: 12
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: model.value
+                                    visible: !rowItem.editing
+                                    color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.text
+                                    font.family: "Monospace"
+                                    elide: Text.ElideLeft
+                                }
+
+                                MouseArea {
+                                    anchors.fill: valueText
+                                    enabled: !rowItem.editing
+                                    onDoubleClicked: {
+                                        stackList.currentIndex = index
+                                        rowItem.editing = true
+                                        editField.text = model.value
+                                        editField.forceActiveFocus()
+                                        editField.selectAll()
+                                    }
+                                }
+
+                                TextField {
+                                    id: editField
+                                    anchors.left: vSep.right
+                                    anchors.leftMargin: 12
+                                    anchors.right: removeBtn.left
+                                    anchors.rightMargin: 12
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    height: 30
+                                    visible: rowItem.editing
+                                    font.family: "Monospace"
+                                    selectByMouse: true
+                                    Keys.priority: Keys.BeforeItem
+
+                                    function commit() {
+                                        if (rpn.stackModel.setValueAt(index, text)) {
+                                            rowItem.editing = false
+                                            input.forceActiveFocus()
+                                        } else {
+                                            toast.show("Nieprawidłowa liczba")
+                                            forceActiveFocus()
+                                            selectAll()
+                                        }
+                                    }
+
+                                    Keys.onReturnPressed: function(event) { commit(); event.accepted = true }
+                                    Keys.onEnterPressed:  function(event) { commit(); event.accepted = true }
+                                    Keys.onEscapePressed: function(event) { rowItem.editing = false; input.forceActiveFocus(); event.accepted = true }
+                                    onEditingFinished: { if (rowItem.editing) commit() }
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    visible: rowItem.editing
+                                    z: 999
+                                    onClicked: editField.commit()
+                                }
+
+                                ToolButton {
+                                    id: removeBtn
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 6 + (stackVBar.visible ? stackVBar.width : 0)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 34
+                                    height: 34
+                                    text: "✕"
+                                    onClicked: win.removeStackAt(index)
+                                }
+                            }
                         }
 
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 6
+                        // Right arrows panel INSIDE the same rounded border (no overlap)
+                        Rectangle {
+                            id: arrowsPanel
+                            Layout.preferredWidth: 48
+                            Layout.fillHeight: true
+                            color: stackFrame.palette.window
 
-                            ToolButton {
-                                text: "▲"
-                                Layout.fillWidth: true
-                                enabled: stackList.currentIndex > 0
-                                onClicked: {
-                                    const i = stackList.currentIndex
-                                    if (rpn.stackModel.moveUp(i)) {
-                                        stackList.currentIndex = i - 1
-                                        stackList.positionViewAtIndex(stackList.currentIndex, ListView.Visible)
-                                    }
-                                }
+                            // inner separator line (instead of an outer border)
+                            Rectangle {
+                                width: 1
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                color: stackFrame.palette.mid
                             }
 
-                            ToolButton {
-                                text: "▼"
-                                Layout.fillWidth: true
-                                enabled: stackList.currentIndex >= 0 && stackList.currentIndex < stackList.count - 1
-                                onClicked: {
-                                    const i = stackList.currentIndex
-                                    if (rpn.stackModel.moveDown(i)) {
-                                        stackList.currentIndex = i + 1
-                                        stackList.positionViewAtIndex(stackList.currentIndex, ListView.Visible)
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 6
+                                spacing: 6
+
+                                ToolButton {
+                                    text: "▲"
+                                    Layout.fillWidth: true
+                                    enabled: stackList.currentIndex > 0
+                                    onClicked: {
+                                        const i = stackList.currentIndex
+                                        if (rpn.stackModel.moveUp(i)) {
+                                            stackList.currentIndex = i - 1
+                                            stackList.positionViewAtIndex(stackList.currentIndex, ListView.Visible)
+                                        }
                                     }
                                 }
-                            }
 
-                            Item { Layout.fillHeight: true }
+                                ToolButton {
+                                    text: "▼"
+                                    Layout.fillWidth: true
+                                    enabled: stackList.currentIndex >= 0 && stackList.currentIndex < stackList.count - 1
+                                    onClicked: {
+                                        const i = stackList.currentIndex
+                                        if (rpn.stackModel.moveDown(i)) {
+                                            stackList.currentIndex = i + 1
+                                            stackList.positionViewAtIndex(stackList.currentIndex, ListView.Visible)
+                                        }
+                                    }
+                                }
+
+                                Item { Layout.fillHeight: true }
+                            }
                         }
                     }
                 }
@@ -656,7 +705,7 @@ ApplicationWindow {
                 SplitView.minimumHeight: 140
 
                 background: Rectangle {
-                    radius: 10
+                    radius: 12
                     color: historyFrame.palette.window
                     border.color: historyFrame.palette.mid
                     border.width: 1
@@ -740,7 +789,7 @@ ApplicationWindow {
             }
         }
 
-        // ===== MODEL-DRIVEN KEYPAD =====
+        // ===== keypad =====
         GridLayout {
             id: keypad
             Layout.fillWidth: true
@@ -751,41 +800,41 @@ ApplicationWindow {
             columnSpacing: 8
 
             readonly property var keys: [
-                { label:"7",   type:"char", value:"7"   },
-                { label:"8",   type:"char", value:"8"   },
-                { label:"9",   type:"char", value:"9"   },
-                { label:"+",   type:"op",   value:"add" },
-                { label:"-",   type:"op",   value:"sub" },
+                { label:"7",   type:"char",  value:"7"    },
+                { label:"8",   type:"char",  value:"8"    },
+                { label:"9",   type:"char",  value:"9"    },
+                { label:"+",   type:"op",    value:"add"  },
+                { label:"-",   type:"op",    value:"sub"  },
 
-                { label:"4",   type:"char", value:"4"   },
-                { label:"5",   type:"char", value:"5"   },
-                { label:"6",   type:"char", value:"6"   },
-                { label:"×",   type:"op",   value:"mul" },
-                { label:"/",   type:"op",   value:"div" },
+                { label:"4",   type:"char",  value:"4"    },
+                { label:"5",   type:"char",  value:"5"    },
+                { label:"6",   type:"char",  value:"6"    },
+                { label:"×",   type:"op",    value:"mul"  },
+                { label:"/",   type:"op",    value:"div"  },
 
-                { label:"1",   type:"char", value:"1"   },
-                { label:"2",   type:"char", value:"2"   },
-                { label:"3",   type:"char", value:"3"   },
-                { label:"sqrt",type:"fn",   value:"sqrt"},
-                { label:"xʸ",  type:"op",   value:"pow" },
+                { label:"1",   type:"char",  value:"1"    },
+                { label:"2",   type:"char",  value:"2"    },
+                { label:"3",   type:"char",  value:"3"    },
+                { label:"sqrt",type:"fn",    value:"sqrt" },
+                { label:"xʸ",  type:"op",    value:"pow"  },
 
-                { label:"0",   type:"char", value:"0"   },
-                { label:".",   type:"char", value:"."   },
-                { label:"⌫",   type:"back", value:""    },
-                { label:"±",   type:"fn",   value:"neg" },
-                { label:"dup", type:"fn",   value:"dup" },
+                { label:"0",   type:"char",  value:"0"    },
+                { label:".",   type:"char",  value:"."    },
+                { label:"⌫",   type:"back",  value:""     },
+                { label:"±",   type:"fn",    value:"neg"  },
+                { label:"dup", type:"fn",    value:"dup"  },
 
-                { label:"sin", type:"fn",   value:"sin" },
-                { label:"cos", type:"fn",   value:"cos" },
-                { label:"swap",type:"fn",   value:"swap"},
-                { label:"drop",type:"fn",   value:"drop"},
-                { label:"ENTER",type:"enter",value:""   }
+                { label:"sin", type:"fn",    value:"sin"  },
+                { label:"cos", type:"fn",    value:"cos"  },
+                { label:"swap",type:"fn",    value:"swap" },
+                { label:"drop",type:"fn",    value:"drop" },
+                { label:"ENTER",type:"enter",value:""     }
             ]
 
             function trigger(k) {
                 switch (k.type) {
-                    case "char": win.appendChar(k.value); break
-                    case "back": win.backspace(); break
+                    case "char":  win.appendChar(k.value); break
+                    case "back":  win.backspace(); break
                     case "enter": win.doEnter(); break
                     case "op":
                         if      (k.value === "add") win.op(rpn.add)
@@ -845,11 +894,8 @@ ApplicationWindow {
 
                     onClicked: keypad.trigger(modelData)
 
-                    // IMPORTANT: prevent focused button from "clicking" on Enter.
-                    // Enter should always push input to stack.
                     Keys.onReturnPressed: function(e) { win.doEnter(); e.accepted = true }
                     Keys.onEnterPressed:  function(e) { win.doEnter(); e.accepted = true }
-
                     Keys.onEscapePressed: function(event) { input.forceActiveFocus(); event.accepted = true }
                 }
                 onItemAdded: Qt.callLater(keypad.relinkNav)

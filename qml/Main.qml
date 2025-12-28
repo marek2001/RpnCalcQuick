@@ -128,15 +128,17 @@ ApplicationWindow {
 
             // Precision range: 2..15
             Instantiator {
-                model: 14   // 14 values: 2..15
+                model: 14   // 14 values -> 2..15
                 delegate: Native.MenuItem {
                     readonly property int prec: model.index + 2
+
                     text: prec.toString()
                     checkable: true
-                    checked: rpn.precision === prec3
+                    checked: rpn.precision === prec
                     group: precGroup
                     onTriggered: rpn.precision = prec
                 }
+
                 onObjectAdded: (index, object) => precisionMenu.insertItem(index, object)
                 onObjectRemoved: (index, object) => precisionMenu.removeItem(object)
             }

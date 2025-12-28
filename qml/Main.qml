@@ -128,7 +128,7 @@ ApplicationWindow {
 
             // Precision range: 2..15
             Instantiator {
-                model: 14   // 14 values -> 2..15
+                model: 13   // 14 values -> 2..15
                 delegate: Native.MenuItem {
                     readonly property int prec: model.index + 2
 

@@ -519,13 +519,28 @@ ApplicationWindow {
                                     color: stackFrame.palette.mid
                                 }
 
+                                // CLICK / DOUBLE-CLICK on the whole row (except the remove button)
                                 MouseArea {
+                                    id: rowMouse
                                     anchors.left: parent.left
                                     anchors.right: removeBtn.left
                                     anchors.top: parent.top
                                     anchors.bottom: parent.bottom
-                                    visible: !rowItem.editing
-                                    onClicked: { stackList.currentIndex = index; input.forceActiveFocus() }
+                                    enabled: !rowItem.editing
+                                    acceptedButtons: Qt.LeftButton
+
+                                    onClicked: {
+                                        stackList.currentIndex = index
+                                        input.forceActiveFocus()
+                                    }
+
+                                    onDoubleClicked: {
+                                        stackList.currentIndex = index
+                                        rowItem.editing = true
+                                        editField.text = model.value
+                                        editField.forceActiveFocus()
+                                        editField.selectAll()
+                                    }
                                 }
 
                                 Text {
@@ -565,18 +580,6 @@ ApplicationWindow {
                                     elide: Text.ElideLeft
                                 }
 
-                                MouseArea {
-                                    anchors.fill: valueText
-                                    enabled: !rowItem.editing
-                                    onDoubleClicked: {
-                                        stackList.currentIndex = index
-                                        rowItem.editing = true
-                                        editField.text = model.value
-                                        editField.forceActiveFocus()
-                                        editField.selectAll()
-                                    }
-                                }
-
                                 TextField {
                                     id: editField
                                     anchors.left: vSep.right
@@ -607,8 +610,12 @@ ApplicationWindow {
                                     onEditingFinished: { if (rowItem.editing) commit() }
                                 }
 
+                                // While editing: click outside TextField (but still not on ✕) commits
                                 MouseArea {
-                                    anchors.fill: parent
+                                    anchors.left: parent.left
+                                    anchors.right: removeBtn.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
                                     visible: rowItem.editing
                                     z: 999
                                     onClicked: editField.commit()

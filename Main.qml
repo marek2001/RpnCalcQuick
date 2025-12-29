@@ -4,7 +4,7 @@ import QtQuick.Layouts 1.15
 import QtQml 2.15
 import Qt.labs.platform as Native
 import Qt5Compat.GraphicalEffects
-import RpnCalc.Backend 1.0
+import RpnCalc.Backend 0.6
 
 ApplicationWindow {
     id: win

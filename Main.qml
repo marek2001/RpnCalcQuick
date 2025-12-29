@@ -820,7 +820,8 @@ ApplicationWindow {
                         else if (k.value === "neg")  win.op(rpn.neg)
                         else if (k.value === "dup")  win.op(rpn.dup)
                         else if (k.value === "drop") win.op(rpn.drop)
-                        else if (k.value === "swap") win.op(rpn.swap)
+                        else if (k.value === "swap") win.op(rpn.swap) /*TODO replace 
+                        with reversed value "1/x example: 5 -> 1/5" redundant when stack manipulation possible*/
                         else if (k.value === "sin")  win.op(rpn.sin)
                         else if (k.value === "cos")  win.op(rpn.cos)
                         break

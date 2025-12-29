@@ -63,6 +63,4 @@ private:
     int m_precision = 6;
 
     QString formatValue(double v) const;
-
-    static QString toSuperscript(int n);
 };

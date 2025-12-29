@@ -45,8 +45,8 @@ void RpnEngine::undo()
 {
     if (m_undoStack.isEmpty()) return;
 
-    m_redoStack.push_back(captureState());          // bieżący -> redo
-    EngineState prev = m_undoStack.takeLast();      // poprzedni
+    m_redoStack.push_back(captureState());  
+    EngineState prev = m_undoStack.takeLast();
     restoreState(prev);
 
     emit canUndoChanged();
@@ -57,8 +57,8 @@ void RpnEngine::redo()
 {
     if (m_redoStack.isEmpty()) return;
 
-    m_undoStack.push_back(captureState());          // bieżący -> undo
-    EngineState next = m_redoStack.takeLast();      // następny
+    m_undoStack.push_back(captureState());
+    EngineState next = m_redoStack.takeLast();
     restoreState(next);
 
     emit canUndoChanged();
@@ -83,7 +83,7 @@ void RpnEngine::appendHistoryLine(const QString &line)
 
 void RpnEngine::clearHistory()
 {
-    if (m_historyText.isEmpty()) return; // nic do czyszczenia
+    if (m_historyText.isEmpty()) return; 
 
     saveState();
     m_history.clear();
@@ -110,7 +110,6 @@ bool RpnEngine::require(int n)
 bool RpnEngine::pop2(double &a, double &b)
 {
     if (!require(2)) return false;
-    // TOP jest na 0, więc najpierw b=top, potem a=kolejny
     if (!m_model.pop(b)) return false;
     if (!m_model.pop(a)) return false;
     return true;
@@ -131,8 +130,7 @@ bool RpnEngine::enter(const QString &text)
         }
         return false;
     }
-
-    // ZAPIS STANU PRZED ZMIANĄ
+    
     saveState();
 
     m_model.push(v);
@@ -144,11 +142,11 @@ bool RpnEngine::enter(const QString &text)
 
 void RpnEngine::add()
 {
-    if (!require(2)) return; // Sprawdzamy wymogi PRZED zapisem stanu
-    saveState();             // ZAPIS
+    if (!require(2)) return;
+    saveState();             
 
     double a,b; 
-    pop2(a,b); // To już nie powinno zawieść, bo sprawdziliśmy require(2)
+    pop2(a,b); 
     m_model.push(a + b);
     
     appendHistoryLine(QString("%1 %2 + -> %3")
@@ -196,7 +194,7 @@ void RpnEngine::div()
     pop2(a,b);
 
     if (b == 0.0) {
-        // Przywracamy ręcznie wartości na stos, żeby nie stracić danych
+        
         m_model.push(a);
         m_model.push(b);
         
@@ -366,8 +364,7 @@ void RpnEngine::setFormatMode(int mode)
 
     m_formatMode = mode;
     emit formatModeChanged();
-
-    // nie resetuj precyzji, tylko odśwież formatowanie
+    
     m_model.setNumberFormat(m_formatMode, m_precision);
 }
 
@@ -388,7 +385,7 @@ RpnEngine::EngineState RpnEngine::captureState() const
     EngineState s;
     s.stack = m_model.snapshot();
     s.historyText = m_historyText;
-    // s.history = m_history;
+    
     return s;
 }
 

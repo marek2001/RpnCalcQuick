@@ -21,37 +21,6 @@ QHash<int, QByteArray> RpnStackModel::roleNames() const
     };
 }
 
-QString RpnStackModel::toSuperscript(int n)
-{
-    static const QChar supDigits[] = {
-        QChar(0x2070), // ⁰
-        QChar(0x00B9), // ¹
-        QChar(0x00B2), // ²
-        QChar(0x00B3), // ³
-        QChar(0x2074), // ⁴
-        QChar(0x2075), // ⁵
-        QChar(0x2076), // ⁶
-        QChar(0x2077), // ⁷
-        QChar(0x2078), // ⁸
-        QChar(0x2079)  // ⁹
-    };
-
-    if (n == 0)
-        return QString(supDigits[0]);
-
-    QString out;
-    if (n < 0) {
-        out += QChar(0x207B); // ⁻
-        n = -n;
-    }
-
-    const QString digits = QString::number(n);
-    for (QChar c : digits)
-        out += supDigits[c.unicode() - '0'];
-
-    return out;
-}
-
 QString RpnStackModel::formatValue(double v) const
 {
     if (!std::isfinite(v)) return QStringLiteral("NaN");
@@ -91,10 +60,7 @@ QString RpnStackModel::formatValue(double v) const
 
         case Simple:
         default:
-            // Tutaj 'g' sprawdza się dobrze (sam usuwa zera), 
-            // ale jeśli wolisz spójność, też można użyć cleanZeros + 'f'.
-            // Zostawmy 'g' z dużą precyzją, bo to tryb "zwykły".
-            return QString::number(v, 'g', 15);
+            return QString::number(v, 'g', 15);//TODO digits grouping "100321321 -> 100 321 321" 
     }
 }
 
@@ -268,7 +234,6 @@ double RpnStackModel::parseInput(const QString &text, bool *ok)
     return status ? v : 0.0;
 }
 
-// --- ZMODYFIKOWANA METODA ---
 bool RpnStackModel::setValueAt(int row, const QString &text)
 {
     if (row < 0 || row >= m_stack.size())

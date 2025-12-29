@@ -27,5 +27,12 @@ qt_add_qml_module(appRpnCalcQuick
 target_link_libraries(appRpnCalcQuick PRIVATE
         Qt6::Quick Qt6::Qml Qt6::QuickControls2 Qt6::Widgets
 )
+qt_import_qml_plugins(appRpnCalcQuick)
 
 qt_finalize_executable(appRpnCalcQuick)
+
+include(GNUInstallDirs)
+
+install(TARGETS appRpnCalcQuick
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)

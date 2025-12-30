@@ -27,12 +27,21 @@ QString RpnStackModel::formatValue(double v) const
     if (v == 0.0) return QStringLiteral("0");
 
     const double absV = std::abs(v);
+    
+    // 1. Pobieramy ustawienia systemowe
+    QLocale locale = QLocale::system();
+    
+    // POPRAWKA DLA QT 6: Używamy QString zamiast QChar
+    QString decimalPoint = locale.decimalPoint(); 
 
-    // Pomocnicza lambda do czyszczenia zer: "123.4500" -> "123.45", "100.0" -> "100"
-    auto cleanZeros = [](QString s) -> QString {
-        if (s.contains('.')) { // Tylko jeśli jest kropka
+    // Pomocnicza lambda do czyszczenia zer
+    auto cleanZeros = [decimalPoint](QString s) -> QString {
+        if (s.contains(decimalPoint)) { 
             while (s.endsWith('0')) s.chop(1);
-            if (s.endsWith('.')) s.chop(1);
+            
+            // Jeśli na końcu został sam przecinek/kropka, też go usuwamy
+            // Używamy decimalPoint.length(), aby było bezpiecznie dla Qt 6
+            if (s.endsWith(decimalPoint)) s.chop(decimalPoint.length());
         }
         return s;
     };
@@ -42,10 +51,7 @@ QString RpnStackModel::formatValue(double v) const
             int exp = static_cast<int>(std::floor(std::log10(absV)));
             double mant = v / std::pow(10.0, exp);
 
-            // Używamy 'f' z zadaną precyzją, a potem czyścimy
-            QString mantStr = cleanZeros(QString::number(mant, 'f', m_precision));
-        
-            // Klasyczny zapis bez udziwnień
+            QString mantStr = cleanZeros(locale.toString(mant, 'f', m_precision));
             return QString("%1 * 10^%2").arg(mantStr).arg(exp);
         }
 
@@ -54,13 +60,14 @@ QString RpnStackModel::formatValue(double v) const
             exp = (exp / 3) * 3;
             double mant = v / std::pow(10.0, exp);
 
-            QString mantStr = cleanZeros(QString::number(mant, 'f', m_precision));
+            QString mantStr = cleanZeros(locale.toString(mant, 'f', m_precision));
             return QString("%1 * 10^%2").arg(mantStr).arg(exp);
         }
 
         case Simple:
         default:
-            return QString::number(v, 'g', 15);//TODO digits grouping "100321321 -> 100 321 321" 
+            QString str = locale.toString(v, 'g', 15);
+            return cleanZeros(str);
     }
 }
 

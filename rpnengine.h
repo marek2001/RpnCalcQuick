@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
-#include <QList> // Potrzebne do historii
+#include <QList>
+#include <QLocale>
 
 #include "rpnstackmodel.h"
 #include "rpnhistorymodel.h"
@@ -19,6 +20,8 @@ class RpnEngine : public QObject
     Q_PROPERTY(bool canRedo READ canRedo NOTIFY canRedoChanged)
     // ----------------------------
 
+    Q_PROPERTY(QString decimalSeparator READ decimalSeparator CONSTANT)
+    
     int formatMode() const { return m_formatMode; }
     int precision() const { return m_precision; }
     QString historyText() const { return m_historyText; }
@@ -73,7 +76,8 @@ public:
 
     Q_INVOKABLE void saveSessionState() const;
     Q_INVOKABLE void loadSessionState();
-    
+
+    QString decimalSeparator() const { return QLocale::system().decimalPoint(); }
 
 signals:
     void errorOccurred(const QString &message);

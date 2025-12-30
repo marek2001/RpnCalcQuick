@@ -791,7 +791,7 @@ ApplicationWindow {
                 { label:"xʸ",   type:"op",    value:"pow" },
 
                 { label:"0",    type:"char",  value:"0" },
-                { label:".",    type:"char",  value:"." },
+                { label: rpn.decimalSeparator, type: "char", value: rpn.decimalSeparator },
                 { label:"⌫",    type:"back",  value:"" },
                 { label:"±",    type:"fn",    value:"neg" },
                 { label:"dup",  type:"fn",    value:"dup" },

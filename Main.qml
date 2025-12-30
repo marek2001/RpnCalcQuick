@@ -12,8 +12,6 @@ ApplicationWindow {
     Component.onCompleted: rpn.loadSessionState()
     onClosing: rpn.saveSessionState()
 
-
-
     width: 500
     height: 720
     visible: true
@@ -28,13 +26,12 @@ ApplicationWindow {
     readonly property int splitHandleH: 8
     readonly property int stackMinH: 200
     readonly property int historyMinH: 140
-
     readonly property color accentColor: win.palette.highlight
 
-    // true when inline stack editField is active (so we don't steal keys from it)
+    // true when inline stack editField is active
     readonly property bool stackEditing: stackList && stackList.currentItem && stackList.currentItem.editing
-    // allow "typing into input" even if focus is elsewhere (keypad/list/etc.)
-    readonly property bool allowGlobalTyping: !input.activeFocus && !stackEditing
+    // allow typing if we are not editing the stack inline
+    readonly property bool allowGlobalTyping: !stackEditing
 
     // ===== helpers =====
     function keepFocus(doWork) {
@@ -77,19 +74,15 @@ ApplicationWindow {
 
     function removeStackAt(row) {
         if (row < 0 || row >= stackList.count) return
-
         const cur = stackList.currentIndex
         rpn.stackModel.removeAt(row)
-
         if (stackList.count === 0) {
             stackList.currentIndex = -1
             return
         }
-
         if (cur === -1) stackList.currentIndex = 0
         else if (cur > row) stackList.currentIndex = cur - 1
         else if (cur === row) stackList.currentIndex = Math.min(row, stackList.count - 1)
-
         stackList.positionViewAtIndex(stackList.currentIndex, ListView.Visible)
         input.forceActiveFocus()
     }
@@ -97,7 +90,6 @@ ApplicationWindow {
     function moveSelectedStack(delta) {
         const i = stackList.currentIndex
         if (i < 0) return
-
         if (delta < 0 && i > 0) {
             if (rpn.stackModel.moveUp(i)) {
                 stackList.currentIndex = i - 1
@@ -115,44 +107,35 @@ ApplicationWindow {
     Native.MenuBar {
         id: appMenu
         window: win
-
         Native.Menu {
             title: "Notation"
             Native.MenuItemGroup { id: fmtGroup; exclusive: true }
-
             Native.MenuItem { text: "Scientific";  checkable: true; checked: rpn.formatMode === 0; group: fmtGroup; onTriggered: rpn.formatMode = 0 }
             Native.MenuItem { text: "Engineering"; checkable: true; checked: rpn.formatMode === 1; group: fmtGroup; onTriggered: rpn.formatMode = 1 }
             Native.MenuItem { text: "Simple";      checkable: true; checked: rpn.formatMode === 2; group: fmtGroup; onTriggered: rpn.formatMode = 2 }
         }
-
         Native.Menu {
             id: precisionMenu
             title: "Precision"
             Native.MenuItemGroup { id: precGroup; exclusive: true }
-
-            // Precision range: 2..15
             Instantiator {
-                model: 13   // 14 values -> 2..15
+                model: 13
                 delegate: Native.MenuItem {
                     readonly property int prec: model.index + 2
-
                     text: prec.toString()
                     checkable: true
                     checked: rpn.precision === prec
                     group: precGroup
                     onTriggered: rpn.precision = prec
                 }
-
                 onObjectAdded: (index, object) => precisionMenu.insertItem(index, object)
                 onObjectRemoved: (index, object) => precisionMenu.removeItem(object)
             }
         }
-
         Native.Menu {
             title: "History"
             Native.MenuItem { text: "Clear history"; onTriggered: rpn.clearHistory() }
         }
-
         Native.Menu {
             title: "Edit"
             Native.MenuItem { text: "Undo"; shortcut: "Ctrl+Z";        enabled: rpn.canUndo; onTriggered: rpn.undo() }
@@ -160,35 +143,35 @@ ApplicationWindow {
         }
         Native.Menu {
             title: "Help"
-
-            Native.MenuItem {
-                text: "Open GitHub Repository"
-                onTriggered: Qt.openUrlExternally(win.repoUrl)
-            }
-
-            Native.MenuItem {
-                text: "Instructions"
-                onTriggered: Qt.openUrlExternally(win.docsUrl)
-            }
-
+            Native.MenuItem { text: "Open GitHub Repository"; onTriggered: Qt.openUrlExternally(win.repoUrl) }
+            Native.MenuItem { text: "Instructions"; onTriggered: Qt.openUrlExternally(win.docsUrl) }
             Native.MenuSeparator { }
-
-            Native.MenuItem {
-                text: "About"
-                onTriggered: aboutDialog.open()
-            }
+            Native.MenuItem { text: "About"; onTriggered: aboutDialog.open() }
         }
     }
 
-    // ===== shortcuts =====
-    Shortcut { sequence: "Return"; context: Qt.ApplicationShortcut; enabled: !win.stackEditing; onActivated: win.doEnter() }
-    Shortcut { sequence: "Enter";  context: Qt.ApplicationShortcut; enabled: !win.stackEditing; onActivated: win.doEnter() }
+    // ===== SHORTCUTS =====
+    // Zmiana: Wszystkie skróty teraz wywołują keypad.simulatePress(), co zapewnia efekt wizualny.
 
-    Shortcut { sequence: "Backspace"; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping; onActivated: win.backspace() }
+    // Enter / Space
+    Shortcut {
+        sequences: [ "Return", "Enter", StandardKey.InsertParagraphSeparator]
+        enabled: !win.stackEditing && !input.activeFocus // Input ma własną obsługę Enter
+        onActivated: keypad.simulatePress("ENTER")
+    }
 
+    // Backspace
+    Shortcut {
+        sequence: "Backspace"
+        enabled: win.allowGlobalTyping && !input.activeFocus
+        onActivated: keypad.simulatePress("BACK")
+    }
+
+    // Stack navigation (bez zmian)
     Shortcut { sequence: "Shift+Up";   context: Qt.ApplicationShortcut; enabled: !win.stackEditing && stackList.currentIndex > 0; onActivated: win.moveSelectedStack(-1) }
     Shortcut { sequence: "Shift+Down"; context: Qt.ApplicationShortcut; enabled: !win.stackEditing && stackList.currentIndex >= 0 && stackList.currentIndex < stackList.count - 1; onActivated: win.moveSelectedStack(+1) }
 
+    // Numbers 0-9
     Repeater {
         model: 10
         delegate: Item {
@@ -196,48 +179,47 @@ ApplicationWindow {
             Shortcut {
                 sequence: modelData.toString()
                 context: Qt.ApplicationShortcut
-                enabled: win.allowGlobalTyping
-                onActivated: win.appendChar(modelData.toString())
+                enabled: win.allowGlobalTyping && !input.activeFocus
+                onActivated: keypad.simulatePress(modelData.toString())
             }
         }
     }
-    Item { visible: false; Shortcut { sequence: "."; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping; onActivated: win.appendChar(".") } }
-    Item { visible: false; Shortcut { sequence: ","; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping; onActivated: win.appendChar(".") } }
+    // Separators
+    Item { visible: false; Shortcut { sequence: "."; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping && !input.activeFocus; onActivated: keypad.simulatePress(".") } }
+    Item { visible: false; Shortcut { sequence: ","; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping && !input.activeFocus; onActivated: keypad.simulatePress(",") } }
 
+    // Undo/Redo
     Shortcut { sequence: StandardKey.Undo; onActivated: rpn.undo() }
     Shortcut { sequence: StandardKey.Redo; onActivated: rpn.redo() }
 
-    Shortcut { sequence: "+"; onActivated: op(rpn.add) }
-    Shortcut { sequence: "-"; onActivated: op(rpn.sub) }
-    Shortcut { sequence: "*"; onActivated: op(rpn.mul) }
-    Shortcut { sequence: "/"; onActivated: op(rpn.div) }
-    Shortcut { sequence: "^"; onActivated: op(rpn.pow) }
+    // Operators & Functions
+    Shortcut { sequence: "+"; onActivated: keypad.simulatePress("+") }
+    Shortcut { sequence: "-"; onActivated: keypad.simulatePress("-") }
+    Shortcut { sequence: "*"; onActivated: keypad.simulatePress("*") }
+    Shortcut { sequence: "/"; onActivated: keypad.simulatePress("/") }
+    Shortcut { sequence: "^"; onActivated: keypad.simulatePress("^") }
 
-    Shortcut { sequence: "Multiply"; onActivated: op(rpn.mul) }
-    Shortcut { sequence: "Divide";   onActivated: op(rpn.div) }
-    Shortcut { sequence: "Add";      onActivated: op(rpn.add) }
-    Shortcut { sequence: "Subtract"; onActivated: op(rpn.sub) }
+    Shortcut { sequence: "Multiply"; onActivated: keypad.simulatePress("*") }
+    Shortcut { sequence: "Divide";   onActivated: keypad.simulatePress("/") }
+    Shortcut { sequence: "Add";      onActivated: keypad.simulatePress("+") }
+    Shortcut { sequence: "Subtract"; onActivated: keypad.simulatePress("-") }
 
-    Shortcut { sequence: "S"; onActivated: op(rpn.sin) }
-    Shortcut { sequence: "C"; onActivated: op(rpn.cos) }
-    Shortcut { sequence: "N"; onActivated: op(rpn.neg) }
-    Shortcut { sequence: "D"; onActivated: op(rpn.dup) }
-    Shortcut { sequence: "X"; onActivated: op(rpn.drop) }
-    Shortcut { sequence: "R"; onActivated: op(rpn.sqrt) }
-    Shortcut { sequence: "W"; onActivated: op(rpn.swap) }
-    
-    // ===== Help / About =====
+    Shortcut { sequence: "S"; onActivated: keypad.simulatePress("sin") }
+    Shortcut { sequence: "C"; onActivated: keypad.simulatePress("cos") }
+    Shortcut { sequence: "N"; onActivated: keypad.simulatePress("neg") }
+    Shortcut { sequence: "D"; onActivated: keypad.simulatePress("dup") }
+    Shortcut { sequence: "X"; onActivated: keypad.simulatePress("drop") }
+    Shortcut { sequence: "R"; onActivated: keypad.simulatePress("sqrt") }
+    Shortcut { sequence: "W"; onActivated: keypad.simulatePress("swap") }
+
+    // Help / About
     readonly property string repoUrl: "https://github.com/marek2001/RpnCalcQuick/"
-    readonly property string docsUrl: repoUrl + "#readme"   // or a direct docs page
+    readonly property string docsUrl: repoUrl + "#readme"
 
     Native.MessageDialog {
         id: aboutDialog
         title: "About RPN Calculator"
-        text: "RPN Calculator (Qt Quick)\n\n" +
-            "• Stack-based calculator (Reverse Polish Notation)\n" +
-            "• Scientific / Engineering / Simple formatting\n" +
-            "• Shortcuts: Enter=push, Shift+Up/Down=move stack\n\n" +
-            "Built with Qt Quick Controls."
+        text: "RPN Calculator (Qt Quick)\nBuilt with Qt Quick Controls."
         buttons: Native.MessageDialog.Ok
     }
 
@@ -249,10 +231,8 @@ ApplicationWindow {
         closePolicy: Popup.NoAutoClose
         padding: 10
         property string text: ""
-
         x: (parent.width - width) / 2
         y: parent.height - height - 16
-
         background: Rectangle {
             radius: 10
             color: toast.palette.window
@@ -260,21 +240,14 @@ ApplicationWindow {
             border.width: 1
             opacity: 0.95
         }
-
         contentItem: Text {
             text: toast.text
             color: toast.palette.text
             wrapMode: Text.Wrap
             width: Math.min(parent.width * 0.9, 360)
         }
-
         Timer { id: toastTimer; interval: 3000; repeat: false; onTriggered: toast.close() }
-
-        function show(msg) {
-            toast.text = msg
-            toast.open()
-            toastTimer.restart()
-        }
+        function show(msg) { toast.text = msg; toast.open(); toastTimer.restart() }
     }
 
     Connections {
@@ -284,21 +257,33 @@ ApplicationWindow {
 
     // ===== reusable inline component: keypad button =====
     component KeyButton: Button {
+        id: btn
         property var key
         focusPolicy: Qt.StrongFocus
-
         Layout.fillWidth: true
         Layout.preferredHeight: 40
         Layout.minimumHeight: 20
         Layout.maximumHeight: 34
-
         text: key.label
+
+        // Timer do odkliknięcia
+        Timer {
+            id: releaseTimer
+            interval: 100
+            onTriggered: btn.down = false
+        }
+
+        // Metoda do mignięcia
+        function flash() {
+            btn.down = true
+            releaseTimer.restart()
+        }
 
         onClicked: keypad.trigger(key)
 
-        // prevent focused button from "clicking" on Enter: Enter always pushes input
-        Keys.onReturnPressed: function(e) { win.doEnter(); e.accepted = true }
-        Keys.onEnterPressed:  function(e) { win.doEnter(); e.accepted = true }
+        // Input handle enter
+        Keys.onReturnPressed: function(e) { e.accepted = false }
+        Keys.onEnterPressed:  function(e) { e.accepted = false }
         Keys.onEscapePressed: function(e) { input.forceActiveFocus(); e.accepted = true }
     }
 
@@ -318,54 +303,33 @@ ApplicationWindow {
 
             Keys.onDownPressed: function(e) { keypad.focusFirst(); e.accepted = true }
 
+            // Przekierowanie klawiszy do keypada (aby mignęły)
             Keys.onPressed: function(e) {
-                if (e.key === Qt.Key_Backspace) return
-                if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) return
+                // Konwersja zdarzenia klawiatury na format zrozumiały dla simulatePress
+                let raw = e.text
+                if (e.key === Qt.Key_Backspace) raw = "BACK"
+                else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) raw = "ENTER"
+                // Jeśli klawisz jest specjalny (np. klawisz funkcyjny), simulatePress zwróci false
+                // i wtedy TextField nie zaakceptuje zdarzenia (co jest ok).
 
-                let handled = true
-                switch (e.key) {
-                    case Qt.Key_Plus:     op(rpn.add); break
-                    case Qt.Key_Minus:    op(rpn.sub); break
-                    case Qt.Key_Asterisk: op(rpn.mul); break
-                    case Qt.Key_Slash:    op(rpn.div); break
-                    default: handled = false; break
+                // Jeśli keypad rozpoznał i obsłużył klawisz:
+                if (keypad.simulatePress(raw)) {
+                    e.accepted = true
                 }
-
-                if (!handled) {
-                    handled = true
-                    switch (e.text) {
-                        case "+": op(rpn.add); break
-                        case "-": op(rpn.sub); break
-                        case "*": op(rpn.mul); break
-                        case "/": op(rpn.div); break
-                        case "^": op(rpn.pow); break
-                        default: handled = false; break
-                    }
-                }
-
-                if (handled) e.accepted = true
             }
         }
 
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
-
             Button { text: "π"; onClicked: rpn.pushPi() }
             Button { text: "e"; onClicked: rpn.pushE() }
-
             Button { text: "↶"; enabled: rpn.canUndo; onClicked: win.keepFocus(() => rpn.undo()) }
             Button { text: "↷"; enabled: rpn.canRedo; onClicked: win.keepFocus(() => rpn.redo()) }
-
             Item { Layout.fillWidth: true }
-
             Button {
                 text: "CLR"
-                onClicked: {
-                    input.text = ""
-                    rpn.clearAll()
-                    input.forceActiveFocus()
-                }
+                onClicked: { input.text = ""; rpn.clearAll(); input.forceActiveFocus() }
             }
         }
 
@@ -383,34 +347,25 @@ ApplicationWindow {
                 opacity: 0.6
                 radius: 4
             }
-
-            // keep default ratio, but track user adjustments
+            // ... (reszta SplitView bez zmian, logika proporcji ta sama)
             property real stackRatio: 0.70
             property bool applying: false
-
             function applyRatio() {
                 applying = true
-
                 const available = Math.max(0, panes.height - win.splitHandleH)
                 const minS = stackFrame.SplitView.minimumHeight || 0
                 const minH = historyFrame.SplitView.minimumHeight || 0
-
                 let s = Math.round(available * stackRatio)
                 s = Math.max(0, Math.min(available, s))
                 let h = available - s
-
                 if (s < minS) { s = Math.min(minS, available); h = available - s }
                 if (h < minH) { h = Math.min(minH, available); s = available - h }
-
                 stackFrame.SplitView.preferredHeight = s
                 historyFrame.SplitView.preferredHeight = h
-
                 applying = false
             }
-
             onHeightChanged: applyRatio()
             Component.onCompleted: Qt.callLater(applyRatio)
-
             Timer {
                 id: sampleRatio
                 interval: 0
@@ -421,7 +376,6 @@ ApplicationWindow {
                     panes.stackRatio = Math.max(0.05, Math.min(0.95, stackFrame.height / available))
                 }
             }
-
             Connections { target: stackFrame;   function onHeightChanged() { sampleRatio.restart() } }
             Connections { target: historyFrame; function onHeightChanged() { sampleRatio.restart() } }
 
@@ -430,7 +384,6 @@ ApplicationWindow {
                 id: stackFrame
                 padding: 0
                 SplitView.minimumHeight: win.stackMinH
-
                 background: Rectangle {
                     id: stackBg
                     radius: win.cornerRadius
@@ -438,13 +391,10 @@ ApplicationWindow {
                     border.color: stackFrame.palette.mid
                     border.width: 1
                 }
-
-                // true rounded clipping for the whole content
                 Item {
                     id: stackClip
                     anchors.fill: parent
                     anchors.margins: stackBg.border.width
-
                     layer.enabled: true
                     layer.smooth: true
                     layer.effect: OpacityMask {
@@ -455,11 +405,9 @@ ApplicationWindow {
                             color: "white"
                         }
                     }
-
                     RowLayout {
                         anchors.fill: parent
                         spacing: 0
-
                         ListView {
                             id: stackList
                             Layout.fillWidth: true
@@ -467,16 +415,12 @@ ApplicationWindow {
                             clip: true
                             model: rpn.stackModel
                             currentIndex: -1
-
                             property int rowHeight: 40
                             property bool showStackBar: false
-
                             Timer { id: stackBarTimer; interval: 700; repeat: false; onTriggered: stackList.showStackBar = false }
-
                             onContentYChanged: { stackList.showStackBar = true; stackBarTimer.restart() }
                             onMovementStarted: { stackList.showStackBar = true; stackBarTimer.restart() }
                             onMovementEnded: stackBarTimer.restart()
-
                             ScrollBar.vertical: ScrollBar {
                                 id: stackVBar
                                 policy: ScrollBar.AsNeeded
@@ -484,23 +428,18 @@ ApplicationWindow {
                                 z: 100
                                 width: 12
                                 padding: 2
-
                                 readonly property bool needed: stackList.contentHeight > stackList.height + 1
                                 visible: needed
                                 opacity: needed ? 1 : 0
                                 Behavior on opacity { NumberAnimation { duration: 120 } }
                             }
-
                             delegate: Item {
                                 id: rowItem
                                 width: stackList.width
                                 height: stackList.rowHeight
-
                                 property bool editing: false
                                 readonly property bool isSelected: ListView.isCurrentItem
-
                                 HoverHandler { id: hoverH }
-
                                 Rectangle {
                                     anchors.fill: parent
                                     color: rowItem.isSelected
@@ -510,7 +449,6 @@ ApplicationWindow {
                                     Behavior on color { ColorAnimation { duration: 80 } }
                                     Behavior on opacity { NumberAnimation { duration: 80 } }
                                 }
-
                                 Rectangle {
                                     anchors.left: parent.left
                                     anchors.right: parent.right
@@ -518,8 +456,6 @@ ApplicationWindow {
                                     height: 1
                                     color: stackFrame.palette.mid
                                 }
-
-                                // CLICK / DOUBLE-CLICK on the whole row (except the remove button)
                                 MouseArea {
                                     id: rowMouse
                                     anchors.left: parent.left
@@ -528,12 +464,7 @@ ApplicationWindow {
                                     anchors.bottom: parent.bottom
                                     enabled: !rowItem.editing
                                     acceptedButtons: Qt.LeftButton
-
-                                    onClicked: {
-                                        stackList.currentIndex = index
-                                        input.forceActiveFocus()
-                                    }
-
+                                    onClicked: { stackList.currentIndex = index; input.forceActiveFocus() }
                                     onDoubleClicked: {
                                         stackList.currentIndex = index
                                         rowItem.editing = true
@@ -542,7 +473,6 @@ ApplicationWindow {
                                         editField.selectAll()
                                     }
                                 }
-
                                 Text {
                                     id: idxText
                                     anchors.left: parent.left
@@ -552,7 +482,6 @@ ApplicationWindow {
                                     color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.text
                                     font.family: "Monospace"
                                 }
-
                                 Rectangle {
                                     id: vSep
                                     width: 1
@@ -565,7 +494,6 @@ ApplicationWindow {
                                     color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.mid
                                     opacity: 0.5
                                 }
-
                                 Text {
                                     id: valueText
                                     anchors.left: vSep.right
@@ -579,7 +507,6 @@ ApplicationWindow {
                                     font.family: "Monospace"
                                     elide: Text.ElideLeft
                                 }
-
                                 TextField {
                                     id: editField
                                     anchors.left: vSep.right
@@ -592,7 +519,6 @@ ApplicationWindow {
                                     font.family: "Monospace"
                                     selectByMouse: true
                                     Keys.priority: Keys.BeforeItem
-
                                     function commit() {
                                         if (rpn.stackModel.setValueAt(index, text)) {
                                             rowItem.editing = false
@@ -603,25 +529,17 @@ ApplicationWindow {
                                             selectAll()
                                         }
                                     }
-
                                     Keys.onReturnPressed: function(e) { commit(); e.accepted = true }
                                     Keys.onEnterPressed:  function(e) { commit(); e.accepted = true }
-                                    Keys.onEscapePressed: function(e) { rowItem.editing = false;
-                                        input.forceActiveFocus(); e.accepted = true }
+                                    Keys.onEscapePressed: function(e) { rowItem.editing = false; input.forceActiveFocus(); e.accepted = true }
                                     onEditingFinished: { if (rowItem.editing) commit() }
                                 }
-
-                                // While editing: click outside TextField (but still not on ✕) commits
                                 MouseArea {
-                                    anchors.left: parent.left
-                                    anchors.right: removeBtn.left
-                                    anchors.top: parent.top
-                                    anchors.bottom: parent.bottom
+                                    anchors.fill: parent
                                     visible: rowItem.editing
                                     z: 999
                                     onClicked: editField.commit()
                                 }
-
                                 ToolButton {
                                     id: removeBtn
                                     anchors.right: parent.right
@@ -634,129 +552,44 @@ ApplicationWindow {
                                 }
                             }
                         }
-
-                        // arrows panel INSIDE the same rounded border
+                        // arrows panel (bez zmian)
                         Rectangle {
                             id: arrowsPanel
                             Layout.preferredWidth: 48
                             Layout.fillHeight: true
                             color: stackFrame.palette.window
-
-                            Rectangle {
-                                width: 1
-                                anchors.left: parent.left
-                                anchors.top: parent.top
-                                anchors.bottom: parent.bottom
-                                color: stackFrame.palette.mid
-                            }
-
+                            Rectangle { width: 1; anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; color: stackFrame.palette.mid }
                             ColumnLayout {
-                                anchors.fill: parent
-                                anchors.margins: 6
-                                spacing: 6
-
-                                ToolButton {
-                                    text: "▲"
-                                    Layout.fillWidth: true
-                                    enabled: stackList.currentIndex > 0
-                                    onClicked: win.moveSelectedStack(-1)
-                                }
-
-                                ToolButton {
-                                    text: "▼"
-                                    Layout.fillWidth: true
-                                    enabled: stackList.currentIndex >= 0 && stackList.currentIndex < stackList.count - 1
-                                    onClicked: win.moveSelectedStack(+1)
-                                }
-
+                                anchors.fill: parent; anchors.margins: 6; spacing: 6
+                                ToolButton { text: "▲"; Layout.fillWidth: true; enabled: stackList.currentIndex > 0; onClicked: win.moveSelectedStack(-1) }
+                                ToolButton { text: "▼"; Layout.fillWidth: true; enabled: stackList.currentIndex >= 0 && stackList.currentIndex < stackList.count - 1; onClicked: win.moveSelectedStack(+1) }
                                 Item { Layout.fillHeight: true }
                             }
                         }
                     }
                 }
             }
-
             // ---- HISTORY ----
             Frame {
                 id: historyFrame
                 padding: 6
                 SplitView.minimumHeight: win.historyMinH
-
-                background: Rectangle {
-                    radius: win.cornerRadius
-                    color: historyFrame.palette.window
-                    border.color: historyFrame.palette.mid
-                    border.width: 1
-                }
-
+                background: Rectangle { radius: win.cornerRadius; color: historyFrame.palette.window; border.color: historyFrame.palette.mid; border.width: 1 }
                 ColumnLayout {
-                    anchors.fill: parent
-                    spacing: 6
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Label { text: "History"; opacity: 0.85 }
-                        Item { Layout.fillWidth: true }
-                        ToolButton { text: "Clear"; onClicked: rpn.clearHistory() }
-                    }
-
+                    anchors.fill: parent; spacing: 6
+                    RowLayout { Layout.fillWidth: true; Label { text: "History"; opacity: 0.85 } Item { Layout.fillWidth: true } ToolButton { text: "Clear"; onClicked: rpn.clearHistory() } }
                     Flickable {
-                        id: historyFlick
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        clip: true
-                        boundsBehavior: Flickable.StopAtBounds
-                        flickableDirection: Flickable.AutoFlickDirection
-
-                        contentWidth: historyText.implicitWidth
-                        contentHeight: historyText.implicitHeight
-
+                        id: historyFlick; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; boundsBehavior: Flickable.StopAtBounds; flickableDirection: Flickable.AutoFlickDirection
+                        contentWidth: historyText.implicitWidth; contentHeight: historyText.implicitHeight
                         property bool showHistBars: false
                         Timer { id: histBarTimer; interval: 700; repeat: false; onTriggered: historyFlick.showHistBars = false }
-
                         onContentYChanged: { historyFlick.showHistBars = true; histBarTimer.restart() }
                         onContentXChanged: { historyFlick.showHistBars = true; histBarTimer.restart() }
                         onMovementStarted: { historyFlick.showHistBars = true; histBarTimer.restart() }
                         onMovementEnded: histBarTimer.restart()
-
-                        ScrollBar.vertical: ScrollBar {
-                            id: histVBar
-                            policy: ScrollBar.AsNeeded
-                            hoverEnabled: true
-                            z: 100
-                            width: 10
-                            padding: 2
-                            readonly property bool needed: historyFlick.contentHeight > historyFlick.height + 1
-                            visible: needed
-                            opacity: (needed && (historyFlick.showHistBars || pressed || hovered)) ? 1 : 0
-                            Behavior on opacity { NumberAnimation { duration: 140 } }
-                        }
-
-                        ScrollBar.horizontal: ScrollBar {
-                            id: histHBar
-                            policy: ScrollBar.AsNeeded
-                            hoverEnabled: true
-                            z: 100
-                            height: 10
-                            padding: 2
-                            readonly property bool needed: historyFlick.contentWidth > historyFlick.width + 1
-                            visible: needed
-                            opacity: (needed && (historyFlick.showHistBars || pressed || hovered)) ? 1 : 0
-                            Behavior on opacity { NumberAnimation { duration: 140 } }
-                        }
-
-                        TextEdit {
-                            id: historyText
-                            x: 0
-                            y: 0
-                            text: rpn.historyText
-                            readOnly: true
-                            selectByMouse: true
-                            wrapMode: TextEdit.NoWrap
-                            font.family: "Monospace"
-                            color: historyFrame.palette.text
-                            width: Math.max(historyFlick.width, implicitWidth)
-                        }
+                        ScrollBar.vertical: ScrollBar { id: histVBar; policy: ScrollBar.AsNeeded; hoverEnabled: true; z: 100; width: 10; padding: 2; readonly property bool needed: historyFlick.contentHeight > historyFlick.height + 1; visible: needed; opacity: (needed && (historyFlick.showHistBars || pressed || hovered)) ? 1 : 0; Behavior on opacity { NumberAnimation { duration: 140 } } }
+                        ScrollBar.horizontal: ScrollBar { id: histHBar; policy: ScrollBar.AsNeeded; hoverEnabled: true; z: 100; height: 10; padding: 2; readonly property bool needed: historyFlick.contentWidth > historyFlick.width + 1; visible: needed; opacity: (needed && (historyFlick.showHistBars || pressed || hovered)) ? 1 : 0; Behavior on opacity { NumberAnimation { duration: 140 } } }
+                        TextEdit { id: historyText; x: 0; y: 0; text: rpn.historyText; readOnly: true; selectByMouse: true; wrapMode: TextEdit.NoWrap; font.family: "Monospace"; color: historyFrame.palette.text; width: Math.max(historyFlick.width, implicitWidth) }
                     }
                 }
             }
@@ -820,12 +653,49 @@ ApplicationWindow {
                         else if (k.value === "neg")  win.op(rpn.neg)
                         else if (k.value === "dup")  win.op(rpn.dup)
                         else if (k.value === "drop") win.op(rpn.drop)
-                        else if (k.value === "swap") win.op(rpn.swap) /*TODO replace 
-                        with reversed value "1/x example: 5 -> 1/5" redundant when stack manipulation possible*/
+                        else if (k.value === "swap") win.op(rpn.swap)
                         else if (k.value === "sin")  win.op(rpn.sin)
                         else if (k.value === "cos")  win.op(rpn.cos)
                         break
                 }
+            }
+
+            // Centralna funkcja symulująca wciśnięcie (używana przez Input i globalne skróty)
+            function simulatePress(rawInput) {
+                let targetLabel = ""
+
+                if (rawInput === "BACK") targetLabel = "⌫"
+                else if (rawInput === "ENTER") targetLabel = "ENTER"
+                else if (rawInput === "." || rawInput === ",") targetLabel = rpn.decimalSeparator
+                else if (rawInput === "+") targetLabel = "+"
+                else if (rawInput === "-") targetLabel = "-"
+                else if (rawInput === "*" || rawInput === "×") targetLabel = "×"
+                else if (rawInput === "/") targetLabel = "/"
+                else if (rawInput === "^") targetLabel = "xʸ"
+
+                // Specjalne mapowanie dla skrótów literowych
+                else if (rawInput === "sin") targetLabel = "sin"
+                else if (rawInput === "cos") targetLabel = "cos"
+                else if (rawInput === "sqrt") targetLabel = "sqrt"
+                else if (rawInput === "neg") targetLabel = "±"
+                else if (rawInput === "dup") targetLabel = "dup"
+                else if (rawInput === "drop") targetLabel = "drop"
+                else if (rawInput === "swap") targetLabel = "swap"
+
+                else if (!isNaN(parseInt(rawInput))) targetLabel = rawInput // 0-9
+
+                // Szukanie i aktywacja przycisku
+                for (let i = 0; i < keypadRep.count; i++) {
+                    const btn = keypadRep.itemAt(i)
+                    const data = keypad.keys[i]
+
+                    if (data.label === targetLabel) {
+                        btn.flash()
+                        trigger(data)
+                        return true
+                    }
+                }
+                return false
             }
 
             function focusFirst() {
@@ -839,16 +709,13 @@ ApplicationWindow {
                 for (let i = 0; i < n; i++) {
                     const b = keypadRep.itemAt(i)
                     if (!b) continue
-
                     const leftIndex  = (i % cols === 0) ? -1 : (i - 1)
                     const rightIndex = (i % cols === cols - 1) ? -1 : (i + 1)
                     const upIndex    = (i - cols >= 0) ? (i - cols) : -1
                     const downIndex  = (i + cols < n) ? (i + cols) : -1
-
                     b.KeyNavigation.left  = (leftIndex  >= 0) ? keypadRep.itemAt(leftIndex)  : null
                     b.KeyNavigation.right = (rightIndex >= 0) ? keypadRep.itemAt(rightIndex) : null
                     b.KeyNavigation.down  = (downIndex  >= 0) ? keypadRep.itemAt(downIndex)  : null
-
                     if (i < cols) b.KeyNavigation.up = input
                     else          b.KeyNavigation.up = keypadRep.itemAt(upIndex)
                 }
@@ -861,7 +728,6 @@ ApplicationWindow {
                 onItemAdded: Qt.callLater(keypad.relinkNav)
                 onItemRemoved: Qt.callLater(keypad.relinkNav)
             }
-
             Component.onCompleted: Qt.callLater(relinkNav)
         }
     }

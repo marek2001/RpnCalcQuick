@@ -26,7 +26,7 @@ public:
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    // engine API
+    // --- ENGINE API ---
     bool has(int n) const;
     void push(double v);
     bool pop(double &v);
@@ -34,26 +34,20 @@ public:
     bool swapTop();
     bool dropTop();
     void clearAll();
-
-    // --- NOWE METODY DO UNDO/REDO ---
+    
     QVector<double> snapshot() const { return m_stack; }
+    void restore(const QVector<double>& s);
 
-    void restore(const QVector<double> &data) {
-        beginResetModel();
-        m_stack = data;
-        endResetModel();
-    }
-    // --------------------------------
-
-    // QML API
+    // --- QML API ---
     Q_INVOKABLE void removeAt(int row);
     Q_INVOKABLE bool moveUp(int row);
     Q_INVOKABLE bool moveDown(int row);
     Q_INVOKABLE bool setValueAt(int row, const QString &text);
 
+    // --- STATIC PARSER ---
     static double parseInput(const QString &text, bool *ok = nullptr);
-    
-    // formatting
+
+    // --- FORMATTING ---
     void setNumberFormat(int mode, int precision);
 
 private:

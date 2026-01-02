@@ -1,5 +1,4 @@
 #include "rpnstackmodel.h"
-
 #include <QLocale>
 #include <cmath>
 
@@ -16,58 +15,80 @@ int RpnStackModel::rowCount(const QModelIndex &parent) const
 
 QHash<int, QByteArray> RpnStackModel::roleNames() const
 {
-    return {
-        { ValueRole, "value" }
-    };
+    return { { ValueRole, "value" } };
 }
 
+// --- PARSING ---
+double RpnStackModel::parseInput(const QString &text, bool *ok)
+{
+    QString t = text.trimmed();
+    if (t.isEmpty()) {
+        if (ok) *ok = false;
+        return 0.0;
+    }
+
+    t.replace(',', '.');
+    t.remove(' ');
+
+    double v = 0.0;
+    bool status = false;
+
+    // Obsługa a*10^b
+    const int splitIdx = t.indexOf("*10^");
+    if (splitIdx > 0) {
+        const QString aStr = t.left(splitIdx);
+        const QString bStr = t.mid(splitIdx + 4);
+
+        bool okA = false, okB = false;
+        const double a = QLocale::c().toDouble(aStr, &okA);
+        const int b = bStr.toInt(&okB);
+
+        if (okA && okB) {
+            v = a * std::pow(10.0, b);
+            status = std::isfinite(v);
+        }
+    } else {
+        v = QLocale::c().toDouble(t, &status);
+        if (status) status = std::isfinite(v);
+    }
+
+    if (ok) *ok = status;
+    return status ? v : 0.0;
+}
+
+// --- FORMATTING ---
 QString RpnStackModel::formatValue(double v) const
 {
     if (!std::isfinite(v)) return QStringLiteral("NaN");
     if (v == 0.0) return QStringLiteral("0");
 
     const double absV = std::abs(v);
-    
-    // 1. Pobieramy ustawienia systemowe
-    QLocale locale = QLocale::system();
-    
-    // POPRAWKA DLA QT 6: Używamy QString zamiast QChar
-    QString decimalPoint = locale.decimalPoint(); 
 
-    // Pomocnicza lambda do czyszczenia zer
-    auto cleanZeros = [decimalPoint](QString s) -> QString {
-        if (s.contains(decimalPoint)) { 
+    auto cleanZeros = [](QString s) -> QString {
+        if (s.contains('.')) {
             while (s.endsWith('0')) s.chop(1);
-            
-            // Jeśli na końcu został sam przecinek/kropka, też go usuwamy
-            // Używamy decimalPoint.length(), aby było bezpiecznie dla Qt 6
-            if (s.endsWith(decimalPoint)) s.chop(decimalPoint.length());
+            if (s.endsWith('.')) s.chop(1);
         }
         return s;
     };
 
     switch (m_mode) {
-        case Scientific: {
-            int exp = static_cast<int>(std::floor(std::log10(absV)));
-            double mant = v / std::pow(10.0, exp);
-
-            QString mantStr = cleanZeros(locale.toString(mant, 'f', m_precision));
-            return QString("%1 * 10^%2").arg(mantStr).arg(exp);
-        }
-
-        case Engineering: {
-            int exp = static_cast<int>(std::floor(std::log10(absV)));
-            exp = (exp / 3) * 3;
-            double mant = v / std::pow(10.0, exp);
-
-            QString mantStr = cleanZeros(locale.toString(mant, 'f', m_precision));
-            return QString("%1 * 10^%2").arg(mantStr).arg(exp);
-        }
-
-        case Simple:
-        default:
-            QString str = locale.toString(v, 'g', 15);
-            return cleanZeros(str);
+    case Scientific: {
+        int exp = static_cast<int>(std::floor(std::log10(absV)));
+        double mant = v / std::pow(10.0, exp);
+        QString mantStr = cleanZeros(QString::number(mant, 'f', m_precision));
+        return QString("%1 * 10^%2").arg(mantStr).arg(exp);
+    }
+    case Engineering: {
+        int exp = static_cast<int>(std::floor(std::log10(absV)));
+        exp = (exp / 3) * 3;
+        double mant = v / std::pow(10.0, exp);
+        QString mantStr = cleanZeros(QString::number(mant, 'f', m_precision));
+        return QString("%1 * 10^%2").arg(mantStr).arg(exp);
+    }
+    case Simple:
+    default:
+        return QString::number(v, 'g', 15);
     }
 }
 
@@ -86,7 +107,7 @@ QVariant RpnStackModel::data(const QModelIndex &index, int role) const
 void RpnStackModel::setNumberFormat(int mode, int precision)
 {
     if (mode < 0 || mode > 2) mode = 0;
-    if (precision < 1) precision = 1;
+    if (precision < 0) precision = 0;
     if (precision > 17) precision = 17;
 
     const auto newMode = static_cast<NumberFormat>(mode);
@@ -99,12 +120,8 @@ void RpnStackModel::setNumberFormat(int mode, int precision)
         emit dataChanged(index(0), index(m_stack.size() - 1), { ValueRole });
 }
 
-// ===== stack operations (engine) =====
-
-bool RpnStackModel::has(int n) const
-{
-    return m_stack.size() >= n;
-}
+// --- STACK OPS ---
+bool RpnStackModel::has(int n) const { return m_stack.size() >= n; }
 
 void RpnStackModel::push(double v)
 {
@@ -115,9 +132,7 @@ void RpnStackModel::push(double v)
 
 bool RpnStackModel::pop(double &v)
 {
-    if (m_stack.isEmpty())
-        return false;
-
+    if (m_stack.isEmpty()) return false;
     beginRemoveRows(QModelIndex(), 0, 0);
     v = m_stack.takeFirst();
     endRemoveRows();
@@ -126,9 +141,7 @@ bool RpnStackModel::pop(double &v)
 
 bool RpnStackModel::dupTop()
 {
-    if (m_stack.isEmpty())
-        return false;
-
+    if (m_stack.isEmpty()) return false;
     beginInsertRows(QModelIndex(), 0, 0);
     m_stack.prepend(m_stack.first());
     endInsertRows();
@@ -137,9 +150,7 @@ bool RpnStackModel::dupTop()
 
 bool RpnStackModel::swapTop()
 {
-    if (m_stack.size() < 2)
-        return false;
-
+    if (m_stack.size() < 2) return false;
     beginResetModel();
     std::swap(m_stack[0], m_stack[1]);
     endResetModel();
@@ -148,9 +159,7 @@ bool RpnStackModel::swapTop()
 
 bool RpnStackModel::dropTop()
 {
-    if (m_stack.isEmpty())
-        return false;
-
+    if (m_stack.isEmpty()) return false;
     beginRemoveRows(QModelIndex(), 0, 0);
     m_stack.removeFirst();
     endRemoveRows();
@@ -164,13 +173,17 @@ void RpnStackModel::clearAll()
     endResetModel();
 }
 
-// ===== QML helpers =====
+void RpnStackModel::restore(const QVector<double> &s)
+{
+    beginResetModel();
+    m_stack = s;
+    endResetModel();
+}
 
+// --- QML HELPER OPS ---
 void RpnStackModel::removeAt(int row)
 {
-    if (row < 0 || row >= m_stack.size())
-        return;
-
+    if (row < 0 || row >= m_stack.size()) return;
     beginRemoveRows(QModelIndex(), row, row);
     m_stack.removeAt(row);
     endRemoveRows();
@@ -178,9 +191,7 @@ void RpnStackModel::removeAt(int row)
 
 bool RpnStackModel::moveUp(int row)
 {
-    if (row <= 0 || row >= m_stack.size())
-        return false;
-
+    if (row <= 0 || row >= m_stack.size()) return false;
     beginResetModel();
     std::swap(m_stack[row], m_stack[row - 1]);
     endResetModel();
@@ -189,69 +200,22 @@ bool RpnStackModel::moveUp(int row)
 
 bool RpnStackModel::moveDown(int row)
 {
-    if (row < 0 || row >= m_stack.size() - 1)
-        return false;
-
+    if (row < 0 || row >= m_stack.size() - 1) return false;
     beginResetModel();
     std::swap(m_stack[row], m_stack[row + 1]);
     endResetModel();
     return true;
 }
 
-double RpnStackModel::parseInput(const QString &text, bool *ok)
-{
-    QString t = text.trimmed();
-    if (t.isEmpty()) {
-        if (ok) *ok = false;
-        return 0.0;
-    }
-
-    // Ujednolicenia (przecinki, spacje)
-    t.replace(',', '.');
-    t.remove(' ');
-
-    double v = 0.0;
-    bool status = false;
-
-    // 1. Sprawdź format naukowy a*10^b (np. 3.2*10^5)
-    // Szukamy "*10^"
-
-    if (const int splitIdx = t.indexOf("*10^"); splitIdx > 0) {
-        const QString aStr = t.left(splitIdx);
-        const QString bStr = t.mid(splitIdx + 4); // długość "*10^" to 4
-
-        bool okA = false, okB = false;
-        const double a = QLocale::c().toDouble(aStr, &okA);
-        const int b = bStr.toInt(&okB);
-
-        if (okA && okB) {
-            v = a * std::pow(10.0, b);
-            status = std::isfinite(v);
-        }
-    } else {
-        // 2. Standardowe parsowanie (np. 3.2e5 lub 123.45)
-        v = QLocale::c().toDouble(t, &status);
-        if (status) {
-            status = std::isfinite(v);
-        }
-    }
-
-    if (ok) *ok = status;
-    return status ? v : 0.0;
-}
-
 bool RpnStackModel::setValueAt(int row, const QString &text)
 {
-    if (row < 0 || row >= m_stack.size())
-        return false;
-
+    if (row < 0 || row >= m_stack.size()) return false;
+    
     bool ok = false;
-    double v = parseInput(text, &ok); // Używamy nowej funkcji
-
+    double v = parseInput(text, &ok);
     if (!ok) return false;
 
     m_stack[row] = v;
     emit dataChanged(index(row), index(row), { ValueRole });
     return true;
 }
-

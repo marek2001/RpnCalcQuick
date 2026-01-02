@@ -1,17 +1,10 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
-import QtQuick.Layouts 1.15
-import QtQml 2.15
 import Qt.labs.platform as Native
-import Qt5Compat.GraphicalEffects
 import RpnCalc.Backend 0.6
 
 ApplicationWindow {
     id: win
-    RpnEngine { id: rpn }
-    Component.onCompleted: rpn.loadSessionState()
-    onClosing: rpn.saveSessionState()
-
     width: 500
     height: 720
     visible: true
@@ -21,36 +14,68 @@ ApplicationWindow {
     maximumWidth: 800
     maximumHeight: 1200
 
-    // ===== style/constants =====
-    readonly property int cornerRadius: 12
-    readonly property int splitHandleH: 8
-    readonly property int stackMinH: 200
-    readonly property int historyMinH: 140
-    readonly property color accentColor: win.palette.highlight
+    // ===== 1. BACKEND (C++) =====
+    RpnEngine {
+        id: rpn
+        // Przekazujemy błędy do toasta w formularzu
+        onErrorOccurred: (msg) => ui.showToast(msg)
+    }
 
-    // true when inline stack editField is active
-    readonly property bool stackEditing: stackList && stackList.currentItem && stackList.currentItem.editing
-    // allow typing if we are not editing the stack inline
-    readonly property bool allowGlobalTyping: !stackEditing
+    Component.onCompleted: rpn.loadSessionState()
+    onClosing: rpn.saveSessionState()
 
-    // ===== helpers =====
+    // ===== 2. VIEW (Formularz) =====
+    MainForm {
+        id: ui
+        anchors.fill: parent
+
+        // Wstrzykiwanie danych do widoku
+        stackModel: rpn.stackModel
+        historyText: rpn.historyText
+        decimalSeparator: rpn.decimalSeparator
+        canUndo: rpn.canUndo
+        canRedo: rpn.canRedo
+
+        // Obsługa sygnałów z widoku (akcje użytkownika)
+        onInputEnter: win.doEnter()
+        onKeypadAction: (key) => win.handleKeypadTrigger(key)
+        onStackRemoveRequest: (idx) => win.removeStackAt(idx)
+        onStackMoveRequest: (delta) => win.moveSelectedStack(delta)
+        onStackValueSet: (row, text) => rpn.stackModel.setValueAt(row, text)
+
+        onPushPi: rpn.pushPi()
+        onPushE: rpn.pushE()
+        onUndoRequest: win.keepFocus(() => rpn.undo())
+        onRedoRequest: win.keepFocus(() => rpn.redo())
+        onClearAllRequest: {
+            ui.inputText = ""
+            rpn.clearAll()
+            ui.forceInputFocus()
+        }
+    }
+
+    // ===== 3. LOGIKA APLIKACJI =====
+
+    // allow typing if we are not editing the stack inline within the UI
+    readonly property bool allowGlobalTyping: !ui.isStackEditing
+
     function keepFocus(doWork) {
         const prev = win.activeFocusItem
         doWork()
-        if (prev && prev !== input && win.activeFocusItem === input)
+        if (prev && prev !== ui.inputItem && win.activeFocusItem === ui.inputItem)
             prev.forceActiveFocus()
     }
 
     function autoEnterIfNeeded() {
-        const t = input.text.trim()
+        const t = ui.inputText.trim()
         if (t.length > 0 && rpn.enter(t))
-            input.text = ""
+            ui.inputText = ""
     }
 
     function doEnter() {
         keepFocus(() => {
-            if (rpn.enter(input.text))
-                input.text = ""
+            if (rpn.enter(ui.inputText))
+                ui.inputText = ""
         })
     }
 
@@ -62,48 +87,76 @@ ApplicationWindow {
     }
 
     function appendChar(s) {
-        keepFocus(() => { input.text = input.text + s })
+        keepFocus(() => { ui.inputText = ui.inputText + s })
     }
 
     function backspace() {
         keepFocus(() => {
-            if (input.text.length > 0)
-                input.text = input.text.slice(0, input.text.length - 1)
+            if (ui.inputText.length > 0)
+                ui.inputText = ui.inputText.slice(0, ui.inputText.length - 1)
         })
     }
 
     function removeStackAt(row) {
-        if (row < 0 || row >= stackList.count) return
-        const cur = stackList.currentIndex
+        if (row < 0 || row >= ui.stackCount) return
+        const cur = ui.stackCurrentIndex
         rpn.stackModel.removeAt(row)
-        if (stackList.count === 0) {
-            stackList.currentIndex = -1
+
+        // Logika selekcji po usunięciu (UI logic helper)
+        if (ui.stackCount === 0) {
+            ui.stackCurrentIndex = -1
             return
         }
-        if (cur === -1) stackList.currentIndex = 0
-        else if (cur > row) stackList.currentIndex = cur - 1
-        else if (cur === row) stackList.currentIndex = Math.min(row, stackList.count - 1)
-        stackList.positionViewAtIndex(stackList.currentIndex, ListView.Visible)
-        input.forceActiveFocus()
+        if (cur === -1) ui.stackCurrentIndex = 0
+        else if (cur > row) ui.stackCurrentIndex = cur - 1
+        else if (cur === row) ui.stackCurrentIndex = Math.min(row, ui.stackCount - 1)
+
+        ui.ensureStackVisible(ui.stackCurrentIndex)
+        ui.forceInputFocus()
     }
 
     function moveSelectedStack(delta) {
-        const i = stackList.currentIndex
+        const i = ui.stackCurrentIndex
         if (i < 0) return
         if (delta < 0 && i > 0) {
             if (rpn.stackModel.moveUp(i)) {
-                stackList.currentIndex = i - 1
-                stackList.positionViewAtIndex(stackList.currentIndex, ListView.Visible)
+                ui.stackCurrentIndex = i - 1
+                ui.ensureStackVisible(ui.stackCurrentIndex)
             }
-        } else if (delta > 0 && i < stackList.count - 1) {
+        } else if (delta > 0 && i < ui.stackCount - 1) {
             if (rpn.stackModel.moveDown(i)) {
-                stackList.currentIndex = i + 1
-                stackList.positionViewAtIndex(stackList.currentIndex, ListView.Visible)
+                ui.stackCurrentIndex = i + 1
+                ui.ensureStackVisible(ui.stackCurrentIndex)
             }
         }
     }
 
-    // ===== Global Menu =====
+    // Obsługa kliknięcia w klawiaturę ekranową
+    function handleKeypadTrigger(k) {
+        switch (k.type) {
+            case "char":  win.appendChar(k.value); break
+            case "back":  win.backspace(); break
+            case "enter": win.doEnter(); break
+            case "op":
+                if      (k.value === "add") win.op(rpn.add)
+                else if (k.value === "sub") win.op(rpn.sub)
+                else if (k.value === "mul") win.op(rpn.mul)
+                else if (k.value === "div") win.op(rpn.div)
+                else if (k.value === "pow") win.op(rpn.pow)
+                break
+            case "fn":
+                if      (k.value === "sqrt") win.op(rpn.sqrt)
+                else if (k.value === "neg")  win.op(rpn.neg)
+                else if (k.value === "dup")  win.op(rpn.dup)
+                else if (k.value === "drop") win.op(rpn.drop)
+                else if (k.value === "swap") win.op(rpn.swap)
+                else if (k.value === "sin")  win.op(rpn.sin)
+                else if (k.value === "cos")  win.op(rpn.cos)
+                break
+        }
+    }
+
+    // ===== 4. GLOBALNE MENU =====
     Native.MenuBar {
         id: appMenu
         window: win
@@ -143,78 +196,12 @@ ApplicationWindow {
         }
         Native.Menu {
             title: "Help"
-            Native.MenuItem { text: "Open GitHub Repository"; onTriggered: Qt.openUrlExternally(win.repoUrl) }
-            Native.MenuItem { text: "Instructions"; onTriggered: Qt.openUrlExternally(win.docsUrl) }
+            Native.MenuItem { text: "Open GitHub Repository"; onTriggered: Qt.openUrlExternally("https://github.com/marek2001/RpnCalcQuick/") }
+            Native.MenuItem { text: "Instructions"; onTriggered: Qt.openUrlExternally("https://github.com/marek2001/RpnCalcQuick/#readme") }
             Native.MenuSeparator { }
             Native.MenuItem { text: "About"; onTriggered: aboutDialog.open() }
         }
     }
-
-    // ===== SHORTCUTS =====
-    // Zmiana: Wszystkie skróty teraz wywołują keypad.simulatePress(), co zapewnia efekt wizualny.
-
-    // Enter / Space
-    Shortcut {
-        sequences: [ "Return", "Enter", StandardKey.InsertParagraphSeparator]
-        enabled: !win.stackEditing && !input.activeFocus // Input ma własną obsługę Enter
-        onActivated: keypad.simulatePress("ENTER")
-    }
-
-    // Backspace
-    Shortcut {
-        sequence: "Backspace"
-        enabled: win.allowGlobalTyping && !input.activeFocus
-        onActivated: keypad.simulatePress("BACK")
-    }
-
-    // Stack navigation (bez zmian)
-    Shortcut { sequence: "Shift+Up";   context: Qt.ApplicationShortcut; enabled: !win.stackEditing && stackList.currentIndex > 0; onActivated: win.moveSelectedStack(-1) }
-    Shortcut { sequence: "Shift+Down"; context: Qt.ApplicationShortcut; enabled: !win.stackEditing && stackList.currentIndex >= 0 && stackList.currentIndex < stackList.count - 1; onActivated: win.moveSelectedStack(+1) }
-
-    // Numbers 0-9
-    Repeater {
-        model: 10
-        delegate: Item {
-            visible: false
-            Shortcut {
-                sequence: modelData.toString()
-                context: Qt.ApplicationShortcut
-                enabled: win.allowGlobalTyping && !input.activeFocus
-                onActivated: keypad.simulatePress(modelData.toString())
-            }
-        }
-    }
-    // Separators
-    Item { visible: false; Shortcut { sequence: "."; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping && !input.activeFocus; onActivated: keypad.simulatePress(".") } }
-    Item { visible: false; Shortcut { sequence: ","; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping && !input.activeFocus; onActivated: keypad.simulatePress(",") } }
-
-    // Undo/Redo
-    Shortcut { sequence: StandardKey.Undo; onActivated: rpn.undo() }
-    Shortcut { sequence: StandardKey.Redo; onActivated: rpn.redo() }
-
-    // Operators & Functions
-    Shortcut { sequence: "+"; onActivated: keypad.simulatePress("+") }
-    Shortcut { sequence: "-"; onActivated: keypad.simulatePress("-") }
-    Shortcut { sequence: "*"; onActivated: keypad.simulatePress("*") }
-    Shortcut { sequence: "/"; onActivated: keypad.simulatePress("/") }
-    Shortcut { sequence: "^"; onActivated: keypad.simulatePress("^") }
-
-    Shortcut { sequence: "Multiply"; onActivated: keypad.simulatePress("*") }
-    Shortcut { sequence: "Divide";   onActivated: keypad.simulatePress("/") }
-    Shortcut { sequence: "Add";      onActivated: keypad.simulatePress("+") }
-    Shortcut { sequence: "Subtract"; onActivated: keypad.simulatePress("-") }
-
-    Shortcut { sequence: "S"; onActivated: keypad.simulatePress("sin") }
-    Shortcut { sequence: "C"; onActivated: keypad.simulatePress("cos") }
-    Shortcut { sequence: "N"; onActivated: keypad.simulatePress("neg") }
-    Shortcut { sequence: "D"; onActivated: keypad.simulatePress("dup") }
-    Shortcut { sequence: "X"; onActivated: keypad.simulatePress("drop") }
-    Shortcut { sequence: "R"; onActivated: keypad.simulatePress("sqrt") }
-    Shortcut { sequence: "W"; onActivated: keypad.simulatePress("swap") }
-
-    // Help / About
-    readonly property string repoUrl: "https://github.com/marek2001/RpnCalcQuick/"
-    readonly property string docsUrl: repoUrl + "#readme"
 
     Native.MessageDialog {
         id: aboutDialog
@@ -223,512 +210,57 @@ ApplicationWindow {
         buttons: Native.MessageDialog.Ok
     }
 
-    // ===== toast =====
-    Popup {
-        id: toast
-        modal: false
-        focus: false
-        closePolicy: Popup.NoAutoClose
-        padding: 10
-        property string text: ""
-        x: (parent.width - width) / 2
-        y: parent.height - height - 16
-        background: Rectangle {
-            radius: 10
-            color: toast.palette.window
-            border.color: toast.palette.mid
-            border.width: 1
-            opacity: 0.95
-        }
-        contentItem: Text {
-            text: toast.text
-            color: toast.palette.text
-            wrapMode: Text.Wrap
-            width: Math.min(parent.width * 0.9, 360)
-        }
-        Timer { id: toastTimer; interval: 3000; repeat: false; onTriggered: toast.close() }
-        function show(msg) { toast.text = msg; toast.open(); toastTimer.restart() }
+    // ===== 5. SKRÓTY KLAWISZOWE =====
+    // Wywołują ui.simulatePress, aby przyciski w widoku "mignęły"
+
+    Shortcut {
+        sequences: [ "Return", "Enter", StandardKey.InsertParagraphSeparator]
+        enabled: !ui.isStackEditing && !ui.inputItem.activeFocus
+        onActivated: ui.simulatePress("ENTER")
     }
-
-    Connections {
-        target: rpn
-        function onErrorOccurred(message) { toast.show(message) }
+    Shortcut {
+        sequence: "Backspace"
+        enabled: win.allowGlobalTyping && !ui.inputItem.activeFocus
+        onActivated: ui.simulatePress("BACK")
     }
+    Shortcut { sequence: "Shift+Up";   context: Qt.ApplicationShortcut; enabled: !ui.isStackEditing && ui.stackCurrentIndex > 0; onActivated: win.moveSelectedStack(-1) }
+    Shortcut { sequence: "Shift+Down"; context: Qt.ApplicationShortcut; enabled: !ui.isStackEditing && ui.stackCurrentIndex >= 0 && ui.stackCurrentIndex < ui.stackCount - 1; onActivated: win.moveSelectedStack(+1) }
 
-    // ===== reusable inline component: keypad button =====
-    component KeyButton: Button {
-        id: btn
-        property var key
-        focusPolicy: Qt.StrongFocus
-        Layout.fillWidth: true
-        Layout.preferredHeight: 40
-        Layout.minimumHeight: 20
-        Layout.maximumHeight: 34
-        text: key.label
-
-        // Timer do odkliknięcia
-        Timer {
-            id: releaseTimer
-            interval: 100
-            onTriggered: btn.down = false
-        }
-
-        // Metoda do mignięcia
-        function flash() {
-            btn.down = true
-            releaseTimer.restart()
-        }
-
-        onClicked: keypad.trigger(key)
-
-        // Input handle enter
-        Keys.onReturnPressed: function(e) { e.accepted = false }
-        Keys.onEnterPressed:  function(e) { e.accepted = false }
-        Keys.onEscapePressed: function(e) { input.forceActiveFocus(); e.accepted = true }
-    }
-
-    // ===== layout =====
-    ColumnLayout {
-        anchors.fill: parent
-        spacing: 10
-
-        TextField {
-            id: input
-            Layout.fillWidth: true
-            font.family: "Monospace"
-            font.pointSize: 16
-            horizontalAlignment: Text.AlignRight
-            inputMethodHints: Qt.ImhFormattedNumbersOnly
-            focus: true
-
-            Keys.onDownPressed: function(e) { keypad.focusFirst(); e.accepted = true }
-
-            // Przekierowanie klawiszy do keypada (aby mignęły)
-            Keys.onPressed: function(e) {
-                // Konwersja zdarzenia klawiatury na format zrozumiały dla simulatePress
-                let raw = e.text
-                if (e.key === Qt.Key_Backspace) raw = "BACK"
-                else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) raw = "ENTER"
-                // Jeśli klawisz jest specjalny (np. klawisz funkcyjny), simulatePress zwróci false
-                // i wtedy TextField nie zaakceptuje zdarzenia (co jest ok).
-
-                // Jeśli keypad rozpoznał i obsłużył klawisz:
-                if (keypad.simulatePress(raw)) {
-                    e.accepted = true
-                }
+    Repeater {
+        model: 10
+        delegate: Item {
+            visible: false
+            Shortcut {
+                sequence: modelData.toString()
+                context: Qt.ApplicationShortcut
+                enabled: win.allowGlobalTyping && !ui.inputItem.activeFocus
+                onActivated: ui.simulatePress(modelData.toString())
             }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-            Button { text: "π"; onClicked: rpn.pushPi() }
-            Button { text: "e"; onClicked: rpn.pushE() }
-            Button { text: "↶"; enabled: rpn.canUndo; onClicked: win.keepFocus(() => rpn.undo()) }
-            Button { text: "↷"; enabled: rpn.canRedo; onClicked: win.keepFocus(() => rpn.redo()) }
-            Item { Layout.fillWidth: true }
-            Button {
-                text: "CLR"
-                onClicked: { input.text = ""; rpn.clearAll(); input.forceActiveFocus() }
-            }
-        }
-
-        // ===== stack + history =====
-        SplitView {
-            id: panes
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            orientation: Qt.Vertical
-            clip: true
-
-            handle: Rectangle {
-                implicitHeight: win.splitHandleH
-                color: panes.palette.mid
-                opacity: 0.6
-                radius: 4
-            }
-            // ... (reszta SplitView bez zmian, logika proporcji ta sama)
-            property real stackRatio: 0.70
-            property bool applying: false
-            function applyRatio() {
-                applying = true
-                const available = Math.max(0, panes.height - win.splitHandleH)
-                const minS = stackFrame.SplitView.minimumHeight || 0
-                const minH = historyFrame.SplitView.minimumHeight || 0
-                let s = Math.round(available * stackRatio)
-                s = Math.max(0, Math.min(available, s))
-                let h = available - s
-                if (s < minS) { s = Math.min(minS, available); h = available - s }
-                if (h < minH) { h = Math.min(minH, available); s = available - h }
-                stackFrame.SplitView.preferredHeight = s
-                historyFrame.SplitView.preferredHeight = h
-                applying = false
-            }
-            onHeightChanged: applyRatio()
-            Component.onCompleted: Qt.callLater(applyRatio)
-            Timer {
-                id: sampleRatio
-                interval: 0
-                repeat: false
-                onTriggered: {
-                    if (panes.applying) return
-                    const available = Math.max(1, panes.height - win.splitHandleH)
-                    panes.stackRatio = Math.max(0.05, Math.min(0.95, stackFrame.height / available))
-                }
-            }
-            Connections { target: stackFrame;   function onHeightChanged() { sampleRatio.restart() } }
-            Connections { target: historyFrame; function onHeightChanged() { sampleRatio.restart() } }
-
-            // ---- STACK ----
-            Frame {
-                id: stackFrame
-                padding: 0
-                SplitView.minimumHeight: win.stackMinH
-                background: Rectangle {
-                    id: stackBg
-                    radius: win.cornerRadius
-                    color: stackFrame.palette.window
-                    border.color: stackFrame.palette.mid
-                    border.width: 1
-                }
-                Item {
-                    id: stackClip
-                    anchors.fill: parent
-                    anchors.margins: stackBg.border.width
-                    layer.enabled: true
-                    layer.smooth: true
-                    layer.effect: OpacityMask {
-                        maskSource: Rectangle {
-                            width: stackClip.width
-                            height: stackClip.height
-                            radius: Math.max(0, win.cornerRadius - stackBg.border.width)
-                            color: "white"
-                        }
-                    }
-                    RowLayout {
-                        anchors.fill: parent
-                        spacing: 0
-                        ListView {
-                            id: stackList
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            clip: true
-                            model: rpn.stackModel
-                            currentIndex: -1
-                            property int rowHeight: 40
-                            property bool showStackBar: false
-                            Timer { id: stackBarTimer; interval: 700; repeat: false; onTriggered: stackList.showStackBar = false }
-                            onContentYChanged: { stackList.showStackBar = true; stackBarTimer.restart() }
-                            onMovementStarted: { stackList.showStackBar = true; stackBarTimer.restart() }
-                            onMovementEnded: stackBarTimer.restart()
-                            ScrollBar.vertical: ScrollBar {
-                                id: stackVBar
-                                policy: ScrollBar.AsNeeded
-                                hoverEnabled: true
-                                z: 100
-                                width: 12
-                                padding: 2
-                                readonly property bool needed: stackList.contentHeight > stackList.height + 1
-                                visible: needed
-                                opacity: needed ? 1 : 0
-                                Behavior on opacity { NumberAnimation { duration: 120 } }
-                            }
-                            delegate: Item {
-                                id: rowItem
-                                width: stackList.width
-                                height: stackList.rowHeight
-                                property bool editing: false
-                                readonly property bool isSelected: ListView.isCurrentItem
-                                HoverHandler { id: hoverH }
-                                Rectangle {
-                                    anchors.fill: parent
-                                    color: rowItem.isSelected
-                                        ? stackFrame.palette.highlight
-                                        : (hoverH.hovered ? Qt.lighter(win.palette.highlight, 1.6) : stackFrame.palette.base)
-                                    opacity: rowItem.isSelected ? 1.0 : (hoverH.hovered ? 0.22 : 1.0)
-                                    Behavior on color { ColorAnimation { duration: 80 } }
-                                    Behavior on opacity { NumberAnimation { duration: 80 } }
-                                }
-                                Rectangle {
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    anchors.bottom: parent.bottom
-                                    height: 1
-                                    color: stackFrame.palette.mid
-                                }
-                                MouseArea {
-                                    id: rowMouse
-                                    anchors.left: parent.left
-                                    anchors.right: removeBtn.left
-                                    anchors.top: parent.top
-                                    anchors.bottom: parent.bottom
-                                    enabled: !rowItem.editing
-                                    acceptedButtons: Qt.LeftButton
-                                    onClicked: { stackList.currentIndex = index; input.forceActiveFocus() }
-                                    onDoubleClicked: {
-                                        stackList.currentIndex = index
-                                        rowItem.editing = true
-                                        editField.text = model.value
-                                        editField.forceActiveFocus()
-                                        editField.selectAll()
-                                    }
-                                }
-                                Text {
-                                    id: idxText
-                                    anchors.left: parent.left
-                                    anchors.leftMargin: 12
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: (index + 1).toString()
-                                    color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.text
-                                    font.family: "Monospace"
-                                }
-                                Rectangle {
-                                    id: vSep
-                                    width: 1
-                                    anchors.left: idxText.right
-                                    anchors.leftMargin: 12
-                                    anchors.top: parent.top
-                                    anchors.bottom: parent.bottom
-                                    anchors.topMargin: 4
-                                    anchors.bottomMargin: 4
-                                    color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.mid
-                                    opacity: 0.5
-                                }
-                                Text {
-                                    id: valueText
-                                    anchors.left: vSep.right
-                                    anchors.leftMargin: 12
-                                    anchors.right: removeBtn.left
-                                    anchors.rightMargin: 12
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: model.value
-                                    visible: !rowItem.editing
-                                    color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.text
-                                    font.family: "Monospace"
-                                    elide: Text.ElideLeft
-                                }
-                                TextField {
-                                    id: editField
-                                    anchors.left: vSep.right
-                                    anchors.leftMargin: 12
-                                    anchors.right: removeBtn.left
-                                    anchors.rightMargin: 12
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    height: 30
-                                    visible: rowItem.editing
-                                    font.family: "Monospace"
-                                    selectByMouse: true
-                                    Keys.priority: Keys.BeforeItem
-                                    function commit() {
-                                        if (rpn.stackModel.setValueAt(index, text)) {
-                                            rowItem.editing = false
-                                            input.forceActiveFocus()
-                                        } else {
-                                            toast.show("Nieprawidłowa liczba")
-                                            forceActiveFocus()
-                                            selectAll()
-                                        }
-                                    }
-                                    Keys.onReturnPressed: function(e) { commit(); e.accepted = true }
-                                    Keys.onEnterPressed:  function(e) { commit(); e.accepted = true }
-                                    Keys.onEscapePressed: function(e) { rowItem.editing = false; input.forceActiveFocus(); e.accepted = true }
-                                    onEditingFinished: { if (rowItem.editing) commit() }
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    visible: rowItem.editing
-                                    z: 999
-                                    onClicked: editField.commit()
-                                }
-                                ToolButton {
-                                    id: removeBtn
-                                    anchors.right: parent.right
-                                    anchors.rightMargin: 6 + (stackVBar.visible ? stackVBar.width : 0)
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 34
-                                    height: 34
-                                    text: "✕"
-                                    onClicked: win.removeStackAt(index)
-                                }
-                            }
-                        }
-                        // arrows panel (bez zmian)
-                        Rectangle {
-                            id: arrowsPanel
-                            Layout.preferredWidth: 48
-                            Layout.fillHeight: true
-                            color: stackFrame.palette.window
-                            Rectangle { width: 1; anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; color: stackFrame.palette.mid }
-                            ColumnLayout {
-                                anchors.fill: parent; anchors.margins: 6; spacing: 6
-                                ToolButton { text: "▲"; Layout.fillWidth: true; enabled: stackList.currentIndex > 0; onClicked: win.moveSelectedStack(-1) }
-                                ToolButton { text: "▼"; Layout.fillWidth: true; enabled: stackList.currentIndex >= 0 && stackList.currentIndex < stackList.count - 1; onClicked: win.moveSelectedStack(+1) }
-                                Item { Layout.fillHeight: true }
-                            }
-                        }
-                    }
-                }
-            }
-            // ---- HISTORY ----
-            Frame {
-                id: historyFrame
-                padding: 6
-                SplitView.minimumHeight: win.historyMinH
-                background: Rectangle { radius: win.cornerRadius; color: historyFrame.palette.window; border.color: historyFrame.palette.mid; border.width: 1 }
-                ColumnLayout {
-                    anchors.fill: parent; spacing: 6
-                    RowLayout { Layout.fillWidth: true; Label { text: "History"; opacity: 0.85 } Item { Layout.fillWidth: true } ToolButton { text: "Clear"; onClicked: rpn.clearHistory() } }
-                    Flickable {
-                        id: historyFlick; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; boundsBehavior: Flickable.StopAtBounds; flickableDirection: Flickable.AutoFlickDirection
-                        contentWidth: historyText.implicitWidth; contentHeight: historyText.implicitHeight
-                        property bool showHistBars: false
-                        Timer { id: histBarTimer; interval: 700; repeat: false; onTriggered: historyFlick.showHistBars = false }
-                        onContentYChanged: { historyFlick.showHistBars = true; histBarTimer.restart() }
-                        onContentXChanged: { historyFlick.showHistBars = true; histBarTimer.restart() }
-                        onMovementStarted: { historyFlick.showHistBars = true; histBarTimer.restart() }
-                        onMovementEnded: histBarTimer.restart()
-                        ScrollBar.vertical: ScrollBar { id: histVBar; policy: ScrollBar.AsNeeded; hoverEnabled: true; z: 100; width: 10; padding: 2; readonly property bool needed: historyFlick.contentHeight > historyFlick.height + 1; visible: needed; opacity: (needed && (historyFlick.showHistBars || pressed || hovered)) ? 1 : 0; Behavior on opacity { NumberAnimation { duration: 140 } } }
-                        ScrollBar.horizontal: ScrollBar { id: histHBar; policy: ScrollBar.AsNeeded; hoverEnabled: true; z: 100; height: 10; padding: 2; readonly property bool needed: historyFlick.contentWidth > historyFlick.width + 1; visible: needed; opacity: (needed && (historyFlick.showHistBars || pressed || hovered)) ? 1 : 0; Behavior on opacity { NumberAnimation { duration: 140 } } }
-                        TextEdit { id: historyText; x: 0; y: 0; text: rpn.historyText; readOnly: true; selectByMouse: true; wrapMode: TextEdit.NoWrap; font.family: "Monospace"; color: historyFrame.palette.text; width: Math.max(historyFlick.width, implicitWidth) }
-                    }
-                }
-            }
-        }
-
-        // ===== keypad =====
-        GridLayout {
-            id: keypad
-            Layout.fillWidth: true
-            Layout.margins: 6
-            columns: 5
-            rowSpacing: 6
-            columnSpacing: 8
-
-            readonly property var keys: [
-                { label:"7",    type:"char",  value:"7" },
-                { label:"8",    type:"char",  value:"8" },
-                { label:"9",    type:"char",  value:"9" },
-                { label:"+",    type:"op",    value:"add" },
-                { label:"-",    type:"op",    value:"sub" },
-
-                { label:"4",    type:"char",  value:"4" },
-                { label:"5",    type:"char",  value:"5" },
-                { label:"6",    type:"char",  value:"6" },
-                { label:"×",    type:"op",    value:"mul" },
-                { label:"/",    type:"op",    value:"div" },
-
-                { label:"1",    type:"char",  value:"1" },
-                { label:"2",    type:"char",  value:"2" },
-                { label:"3",    type:"char",  value:"3" },
-                { label:"sqrt", type:"fn",    value:"sqrt" },
-                { label:"xʸ",   type:"op",    value:"pow" },
-
-                { label:"0",    type:"char",  value:"0" },
-                { label: rpn.decimalSeparator, type: "char", value: rpn.decimalSeparator },
-                { label:"⌫",    type:"back",  value:"" },
-                { label:"±",    type:"fn",    value:"neg" },
-                { label:"dup",  type:"fn",    value:"dup" },
-
-                { label:"sin",  type:"fn",    value:"sin" },
-                { label:"cos",  type:"fn",    value:"cos" },
-                { label:"swap", type:"fn",    value:"swap" },
-                { label:"drop", type:"fn",    value:"drop" },
-                { label:"ENTER",type:"enter", value:"" }
-            ]
-
-            function trigger(k) {
-                switch (k.type) {
-                    case "char":  win.appendChar(k.value); break
-                    case "back":  win.backspace(); break
-                    case "enter": win.doEnter(); break
-                    case "op":
-                        if      (k.value === "add") win.op(rpn.add)
-                        else if (k.value === "sub") win.op(rpn.sub)
-                        else if (k.value === "mul") win.op(rpn.mul)
-                        else if (k.value === "div") win.op(rpn.div)
-                        else if (k.value === "pow") win.op(rpn.pow)
-                        break
-                    case "fn":
-                        if      (k.value === "sqrt") win.op(rpn.sqrt)
-                        else if (k.value === "neg")  win.op(rpn.neg)
-                        else if (k.value === "dup")  win.op(rpn.dup)
-                        else if (k.value === "drop") win.op(rpn.drop)
-                        else if (k.value === "swap") win.op(rpn.swap)
-                        else if (k.value === "sin")  win.op(rpn.sin)
-                        else if (k.value === "cos")  win.op(rpn.cos)
-                        break
-                }
-            }
-
-            // Centralna funkcja symulująca wciśnięcie (używana przez Input i globalne skróty)
-            function simulatePress(rawInput) {
-                let targetLabel = ""
-
-                if (rawInput === "BACK") targetLabel = "⌫"
-                else if (rawInput === "ENTER") targetLabel = "ENTER"
-                else if (rawInput === "." || rawInput === ",") targetLabel = rpn.decimalSeparator
-                else if (rawInput === "+") targetLabel = "+"
-                else if (rawInput === "-") targetLabel = "-"
-                else if (rawInput === "*" || rawInput === "×") targetLabel = "×"
-                else if (rawInput === "/") targetLabel = "/"
-                else if (rawInput === "^") targetLabel = "xʸ"
-
-                // Specjalne mapowanie dla skrótów literowych
-                else if (rawInput === "sin") targetLabel = "sin"
-                else if (rawInput === "cos") targetLabel = "cos"
-                else if (rawInput === "sqrt") targetLabel = "sqrt"
-                else if (rawInput === "neg") targetLabel = "±"
-                else if (rawInput === "dup") targetLabel = "dup"
-                else if (rawInput === "drop") targetLabel = "drop"
-                else if (rawInput === "swap") targetLabel = "swap"
-
-                else if (!isNaN(parseInt(rawInput))) targetLabel = rawInput // 0-9
-
-                // Szukanie i aktywacja przycisku
-                for (let i = 0; i < keypadRep.count; i++) {
-                    const btn = keypadRep.itemAt(i)
-                    const data = keypad.keys[i]
-
-                    if (data.label === targetLabel) {
-                        btn.flash()
-                        trigger(data)
-                        return true
-                    }
-                }
-                return false
-            }
-
-            function focusFirst() {
-                const b = keypadRep.itemAt(0)
-                if (b) b.forceActiveFocus()
-            }
-
-            function relinkNav() {
-                const cols = keypad.columns
-                const n = keypadRep.count
-                for (let i = 0; i < n; i++) {
-                    const b = keypadRep.itemAt(i)
-                    if (!b) continue
-                    const leftIndex  = (i % cols === 0) ? -1 : (i - 1)
-                    const rightIndex = (i % cols === cols - 1) ? -1 : (i + 1)
-                    const upIndex    = (i - cols >= 0) ? (i - cols) : -1
-                    const downIndex  = (i + cols < n) ? (i + cols) : -1
-                    b.KeyNavigation.left  = (leftIndex  >= 0) ? keypadRep.itemAt(leftIndex)  : null
-                    b.KeyNavigation.right = (rightIndex >= 0) ? keypadRep.itemAt(rightIndex) : null
-                    b.KeyNavigation.down  = (downIndex  >= 0) ? keypadRep.itemAt(downIndex)  : null
-                    if (i < cols) b.KeyNavigation.up = input
-                    else          b.KeyNavigation.up = keypadRep.itemAt(upIndex)
-                }
-            }
-
-            Repeater {
-                id: keypadRep
-                model: keypad.keys
-                delegate: KeyButton { key: modelData }
-                onItemAdded: Qt.callLater(keypad.relinkNav)
-                onItemRemoved: Qt.callLater(keypad.relinkNav)
-            }
-            Component.onCompleted: Qt.callLater(relinkNav)
         }
     }
+    // Separators
+    Item { visible: false; Shortcut { sequence: "."; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping && !ui.inputItem.activeFocus; onActivated: ui.simulatePress(".") } }
+    Item { visible: false; Shortcut { sequence: ","; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping && !ui.inputItem.activeFocus; onActivated: ui.simulatePress(",") } }
+
+    Shortcut { sequence: StandardKey.Undo; onActivated: rpn.undo() }
+    Shortcut { sequence: StandardKey.Redo; onActivated: rpn.redo() }
+
+    Shortcut { sequence: "+"; onActivated: ui.simulatePress("+") }
+    Shortcut { sequence: "-"; onActivated: ui.simulatePress("-") }
+    Shortcut { sequence: "*"; onActivated: ui.simulatePress("*") }
+    Shortcut { sequence: "/"; onActivated: ui.simulatePress("/") }
+    Shortcut { sequence: "^"; onActivated: ui.simulatePress("^") }
+
+    Shortcut { sequence: "Multiply"; onActivated: ui.simulatePress("*") }
+    Shortcut { sequence: "Divide";   onActivated: ui.simulatePress("/") }
+    Shortcut { sequence: "Add";      onActivated: ui.simulatePress("+") }
+    Shortcut { sequence: "Subtract"; onActivated: ui.simulatePress("-") }
+
+    Shortcut { sequence: "S"; onActivated: ui.simulatePress("sin") }
+    Shortcut { sequence: "C"; onActivated: ui.simulatePress("cos") }
+    Shortcut { sequence: "N"; onActivated: ui.simulatePress("neg") }
+    Shortcut { sequence: "D"; onActivated: ui.simulatePress("dup") }
+    Shortcut { sequence: "X"; onActivated: ui.simulatePress("drop") }
+    Shortcut { sequence: "R"; onActivated: ui.simulatePress("sqrt") }
+    Shortcut { sequence: "W"; onActivated: ui.simulatePress("swap") }
 }

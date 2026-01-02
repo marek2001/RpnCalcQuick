@@ -215,9 +215,8 @@ double RpnStackModel::parseInput(const QString &text, bool *ok)
 
     // 1. Sprawdź format naukowy a*10^b (np. 3.2*10^5)
     // Szukamy "*10^"
-    const int splitIdx = t.indexOf("*10^");
-    
-    if (splitIdx > 0) {
+
+    if (const int splitIdx = t.indexOf("*10^"); splitIdx > 0) {
         const QString aStr = t.left(splitIdx);
         const QString bStr = t.mid(splitIdx + 4); // długość "*10^" to 4
 

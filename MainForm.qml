@@ -1,0 +1,494 @@
+import QtQuick 2.15
+import QtQuick.Controls 2.15
+import QtQuick.Layouts 1.15
+import QtQml 2.15
+import Qt5Compat.GraphicalEffects
+
+Item {
+    id: root
+
+    // ===== Publiczne API + ATRAPY DLA DESIGNERA =====
+
+    // 1. Zamiast 'null', dajemy tu ListModel z przykładowymi danymi.
+    // C++ nadpisze to przy uruchomieniu, ale Designer zobaczy te liczby.
+    property var stackModel: ListModel {
+        ListElement { value: "3.1415926" } // Atrapa 1
+        ListElement { value: "125.00" }    // Atrapa 2
+        ListElement { value: "42" }        // Atrapa 3
+    }
+
+    // 2. Domyślny tekst historii, żeby Designer nie był pusty
+    property string historyText: "3 Enter\n4 +\nResult: 7"
+
+    // 3. Domyślny separator
+    property string decimalSeparator: "."
+
+    property bool canUndo: true  // Ustaw na true, żeby przyciski były aktywne w podglądzie
+    property bool canRedo: false
+
+    // Aliases
+    property alias inputText: input.text
+    property alias inputItem: input
+    // Stack interaction
+    property alias stackCurrentIndex: stackList.currentIndex
+    readonly property int stackCount: stackList.count
+
+    // Musimy zabezpieczyć sprawdzanie editing, bo stackList może nie być gotowy w Designerze
+    readonly property bool isStackEditing: (stackList && stackList.currentItem) ? stackList.currentItem.editing : false
+
+    // Signals (Outputs) - bez zmian
+    signal inputEnter()
+    signal keypadAction(var key)
+    signal pushPi()
+    signal pushE()
+    signal undoRequest()
+    signal redoRequest()
+    signal clearAllRequest()
+    signal stackRemoveRequest(int index)
+    signal stackMoveRequest(int delta)
+    signal stackValueSet(int row, string text)
+
+    // Methods needed by controller
+    function forceInputFocus() { input.forceActiveFocus() }
+    function ensureStackVisible(idx) { stackList.positionViewAtIndex(idx, ListView.Visible) }
+    function showToast(msg) { toast.show(msg) }
+
+    function simulatePress(rawInput) {
+        return keypad.simulatePress(rawInput)
+    }
+
+    // ===== Style =====
+    readonly property int cornerRadius: 12
+    readonly property int splitHandleH: 8
+    readonly property int stackMinH: 200
+    readonly property int historyMinH: 140
+
+    // ===== Reusable Component: KeyButton =====
+    component KeyButton: Button {
+        id: btn
+        property var key
+        focusPolicy: Qt.StrongFocus
+        Layout.fillWidth: true
+        Layout.preferredHeight: 40
+        Layout.minimumHeight: 20
+        Layout.maximumHeight: 34
+        text: key.label
+
+        Timer {
+            id: releaseTimer; interval: 100
+            onTriggered: btn.down = false
+        }
+        function flash() {
+            btn.down = true; releaseTimer.restart()
+        }
+        onClicked: root.keypadAction(key)
+
+        Keys.onReturnPressed: function(e) { e.accepted = false }
+        Keys.onEnterPressed:  function(e) { e.accepted = false }
+        Keys.onEscapePressed: function(e) { input.forceActiveFocus(); e.accepted = true }
+    }
+
+    // ===== Layout Content =====
+    ColumnLayout {
+        anchors.fill: parent
+        spacing: 10
+
+        // Input Field
+        TextField {
+            id: input
+            Layout.fillWidth: true
+            font.family: "Monospace"
+            font.pointSize: 16
+            horizontalAlignment: Text.AlignRight
+            inputMethodHints: Qt.ImhFormattedNumbersOnly
+            focus: true
+
+            Keys.onDownPressed: function(e) { keypad.focusFirst(); e.accepted = true }
+            Keys.onPressed: function(e) {
+                let raw = e.text
+                if (e.key === Qt.Key_Backspace) raw = "BACK"
+                else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) raw = "ENTER"
+
+                if (keypad.simulatePress(raw)) {
+                    e.accepted = true
+                }
+            }
+        }
+
+        // Top Toolbar
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            Button { text: "π"; onClicked: root.pushPi() }
+            Button { text: "e"; onClicked: root.pushE() }
+            Button { text: "↶"; enabled: root.canUndo; onClicked: root.undoRequest() }
+            Button { text: "↷"; enabled: root.canRedo; onClicked: root.redoRequest() }
+            Item { Layout.fillWidth: true }
+            Button {
+                text: "CLR"
+                onClicked: root.clearAllRequest()
+            }
+        }
+
+        // SplitView (Stack + History)
+        SplitView {
+            id: panes
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            orientation: Qt.Vertical
+            clip: true
+
+            handle: Rectangle {
+                implicitHeight: root.splitHandleH
+                color: panes.palette.mid
+                opacity: 0.6
+                radius: 4
+            }
+
+            // Logic for ratio saving/restoring (visual only)
+            property real stackRatio: 0.70
+            property bool applying: false
+            function applyRatio() {
+                applying = true
+                const available = Math.max(0, panes.height - root.splitHandleH)
+                const minS = stackFrame.SplitView.minimumHeight || 0
+                const minH = historyFrame.SplitView.minimumHeight || 0
+                let s = Math.round(available * stackRatio)
+                s = Math.max(0, Math.min(available, s))
+                let h = available - s
+                if (s < minS) { s = Math.min(minS, available); h = available - s }
+                if (h < minH) { h = Math.min(minH, available); s = available - h }
+                stackFrame.SplitView.preferredHeight = s
+                historyFrame.SplitView.preferredHeight = h
+                applying = false
+            }
+            onHeightChanged: applyRatio()
+            Component.onCompleted: Qt.callLater(applyRatio)
+            Timer {
+                id: sampleRatio
+                interval: 0; repeat: false
+                onTriggered: {
+                    if (panes.applying) return
+                    const available = Math.max(1, panes.height - root.splitHandleH)
+                    panes.stackRatio = Math.max(0.05, Math.min(0.95, stackFrame.height / available))
+                }
+            }
+            Connections { target: stackFrame;   function onHeightChanged() { sampleRatio.restart() } }
+            Connections { target: historyFrame; function onHeightChanged() { sampleRatio.restart() } }
+
+            // Stack Frame
+            Frame {
+                id: stackFrame
+                padding: 0
+                SplitView.minimumHeight: root.stackMinH
+                background: Rectangle {
+                    id: stackBg
+                    radius: root.cornerRadius
+                    color: stackFrame.palette.window
+                    border.color: stackFrame.palette.mid
+                    border.width: 1
+                }
+                Item {
+                    id: stackClip
+                    anchors.fill: parent
+                    anchors.margins: stackBg.border.width
+                    layer.enabled: true
+                    layer.smooth: true
+                    layer.effect: OpacityMask {
+                        maskSource: Rectangle {
+                            width: stackClip.width
+                            height: stackClip.height
+                            radius: Math.max(0, root.cornerRadius - stackBg.border.width)
+                            color: "white"
+                        }
+                    }
+                    RowLayout {
+                        anchors.fill: parent
+                        spacing: 0
+                        ListView {
+                            id: stackList
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+                            model: root.stackModel // Using passed model
+                            currentIndex: -1
+                            property int rowHeight: 40
+                            property bool showStackBar: false
+                            Timer { id: stackBarTimer; interval: 700; repeat: false; onTriggered: stackList.showStackBar = false }
+                            onContentYChanged: { stackList.showStackBar = true; stackBarTimer.restart() }
+                            onMovementStarted: { stackList.showStackBar = true; stackBarTimer.restart() }
+                            onMovementEnded: stackBarTimer.restart()
+                            ScrollBar.vertical: ScrollBar {
+                                id: stackVBar
+                                policy: ScrollBar.AsNeeded
+                                hoverEnabled: true
+                                z: 100; width: 12; padding: 2
+                                readonly property bool needed: stackList.contentHeight > stackList.height + 1
+                                visible: needed
+                                opacity: needed ? 1 : 0
+                                Behavior on opacity { NumberAnimation { duration: 120 } }
+                            }
+                            delegate: Item {
+                                id: rowItem
+                                width: stackList.width
+                                height: stackList.rowHeight
+                                property bool editing: false
+                                readonly property bool isSelected: ListView.isCurrentItem
+                                HoverHandler { id: hoverH }
+                                Rectangle {
+                                    anchors.fill: parent
+                                    color: rowItem.isSelected ? stackFrame.palette.highlight : (hoverH.hovered ? Qt.lighter(root.palette.highlight, 1.6) : stackFrame.palette.base)
+                                    opacity: rowItem.isSelected ? 1.0 : (hoverH.hovered ? 0.22 : 1.0)
+                                    Behavior on color { ColorAnimation { duration: 80 } }
+                                    Behavior on opacity { NumberAnimation { duration: 80 } }
+                                }
+                                Rectangle {
+                                    anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 1
+                                    color: stackFrame.palette.mid
+                                }
+                                MouseArea {
+                                    id: rowMouse
+                                    anchors.left: parent.left; anchors.right: removeBtn.left; anchors.top: parent.top; anchors.bottom: parent.bottom
+                                    enabled: !rowItem.editing
+                                    acceptedButtons: Qt.LeftButton
+                                    onClicked: { stackList.currentIndex = index; input.forceActiveFocus() }
+                                    onDoubleClicked: {
+                                        stackList.currentIndex = index
+                                        rowItem.editing = true
+                                        editField.text = model.value
+                                        editField.forceActiveFocus()
+                                        editField.selectAll()
+                                    }
+                                }
+                                Text {
+                                    id: idxText
+                                    anchors.left: parent.left; anchors.leftMargin: 12; anchors.verticalCenter: parent.verticalCenter
+                                    text: (index + 1).toString()
+                                    color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.text
+                                    font.family: "Monospace"
+                                }
+                                Rectangle {
+                                    id: vSep
+                                    width: 1
+                                    anchors.left: idxText.right; anchors.leftMargin: 12; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.topMargin: 4; anchors.bottomMargin: 4
+                                    color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.mid
+                                    opacity: 0.5
+                                }
+                                Text {
+                                    id: valueText
+                                    anchors.left: vSep.right; anchors.leftMargin: 12; anchors.right: removeBtn.left; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter
+                                    text: model.value
+                                    visible: !rowItem.editing
+                                    color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.text
+                                    font.family: "Monospace"
+                                    elide: Text.ElideLeft
+                                }
+                                TextField {
+                                    id: editField
+                                    anchors.left: vSep.right; anchors.leftMargin: 12; anchors.right: removeBtn.left; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter
+                                    height: 30
+                                    visible: rowItem.editing
+                                    font.family: "Monospace"
+                                    selectByMouse: true
+                                    Keys.priority: Keys.BeforeItem
+                                    function commit() {
+                                        // Emit signal instead of calling model directly, though direct call to setValueAt via property is also okay if model is valid
+                                        // But to keep it clean, we signal. However, setValueAt returns bool, so we might need direct access if we want validation feedback here.
+                                        // Since stackModel is passed as property, we can call it.
+                                        if (root.stackModel && root.stackModel.setValueAt(index, text)) {
+                                            rowItem.editing = false
+                                            input.forceActiveFocus()
+                                        } else {
+                                            toast.show("Nieprawidłowa liczba")
+                                            forceActiveFocus()
+                                            selectAll()
+                                        }
+                                    }
+                                    Keys.onReturnPressed: function(e) { commit(); e.accepted = true }
+                                    Keys.onEnterPressed:  function(e) { commit(); e.accepted = true }
+                                    Keys.onEscapePressed: function(e) { rowItem.editing = false; input.forceActiveFocus(); e.accepted = true }
+                                    onEditingFinished: { if (rowItem.editing) commit() }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent; visible: rowItem.editing; z: 999
+                                    onClicked: editField.commit()
+                                }
+                                ToolButton {
+                                    id: removeBtn
+                                    anchors.right: parent.right; anchors.rightMargin: 6 + (stackVBar.visible ? stackVBar.width : 0)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 34; height: 34
+                                    text: "✕"
+                                    onClicked: root.stackRemoveRequest(index)
+                                }
+                            }
+                        }
+                        // Arrows Panel
+                        Rectangle {
+                            id: arrowsPanel
+                            Layout.preferredWidth: 48; Layout.fillHeight: true
+                            color: stackFrame.palette.window
+                            Rectangle { width: 1; anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; color: stackFrame.palette.mid }
+                            ColumnLayout {
+                                anchors.fill: parent; anchors.margins: 6; spacing: 6
+                                ToolButton { text: "▲"; Layout.fillWidth: true; enabled: stackList.currentIndex > 0; onClicked: root.stackMoveRequest(-1) }
+                                ToolButton { text: "▼"; Layout.fillWidth: true; enabled: stackList.currentIndex >= 0 && stackList.currentIndex < stackList.count - 1; onClicked: root.stackMoveRequest(+1) }
+                                Item { Layout.fillHeight: true }
+                            }
+                        }
+                    }
+                }
+            }
+            // History Frame
+            Frame {
+                id: historyFrame
+                padding: 6
+                SplitView.minimumHeight: root.historyMinH
+                background: Rectangle { radius: root.cornerRadius; color: historyFrame.palette.window; border.color: historyFrame.palette.mid; border.width: 1 }
+                ColumnLayout {
+                    anchors.fill: parent; spacing: 6
+                    RowLayout { Layout.fillWidth: true; Label { text: "History"; opacity: 0.85 } Item { Layout.fillWidth: true } ToolButton { text: "Clear"; onClicked: root.clearAllRequest() } } // Or separate clear history signal
+                    Flickable {
+                        id: historyFlick; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; boundsBehavior: Flickable.StopAtBounds; flickableDirection: Flickable.AutoFlickDirection
+                        contentWidth: historyTextDisplay.implicitWidth; contentHeight: historyTextDisplay.implicitHeight
+                        property bool showHistBars: false
+                        Timer { id: histBarTimer; interval: 700; repeat: false; onTriggered: historyFlick.showHistBars = false }
+                        onContentYChanged: { historyFlick.showHistBars = true; histBarTimer.restart() }
+                        onContentXChanged: { historyFlick.showHistBars = true; histBarTimer.restart() }
+                        onMovementStarted: { historyFlick.showHistBars = true; histBarTimer.restart() }
+                        onMovementEnded: histBarTimer.restart()
+                        ScrollBar.vertical: ScrollBar { id: histVBar; policy: ScrollBar.AsNeeded; hoverEnabled: true; z: 100; width: 10; padding: 2; readonly property bool needed: historyFlick.contentHeight > historyFlick.height + 1; visible: needed; opacity: (needed && (historyFlick.showHistBars || pressed || hovered)) ? 1 : 0; Behavior on opacity { NumberAnimation { duration: 140 } } }
+                        ScrollBar.horizontal: ScrollBar { id: histHBar; policy: ScrollBar.AsNeeded; hoverEnabled: true; z: 100; height: 10; padding: 2; readonly property bool needed: historyFlick.contentWidth > historyFlick.width + 1; visible: needed; opacity: (needed && (historyFlick.showHistBars || pressed || hovered)) ? 1 : 0; Behavior on opacity { NumberAnimation { duration: 140 } } }
+                        TextEdit {
+                            id: historyTextDisplay
+                            x: 0; y: 0
+                            text: root.historyText
+                            readOnly: true
+                            selectByMouse: true
+                            wrapMode: TextEdit.NoWrap
+                            font.family: "Monospace"
+                            color: historyFrame.palette.text
+                            width: Math.max(historyFlick.width, implicitWidth)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Keypad
+        GridLayout {
+            id: keypad
+            Layout.fillWidth: true; Layout.margins: 6
+            columns: 5; rowSpacing: 6; columnSpacing: 8
+
+            readonly property var keys: [
+                { label:"7",    type:"char",  value:"7" },
+                { label:"8",    type:"char",  value:"8" },
+                { label:"9",    type:"char",  value:"9" },
+                { label:"+",    type:"op",    value:"add" },
+                { label:"-",    type:"op",    value:"sub" },
+
+                { label:"4",    type:"char",  value:"4" },
+                { label:"5",    type:"char",  value:"5" },
+                { label:"6",    type:"char",  value:"6" },
+                { label:"×",    type:"op",    value:"mul" },
+                { label:"/",    type:"op",    value:"div" },
+
+                { label:"1",    type:"char",  value:"1" },
+                { label:"2",    type:"char",  value:"2" },
+                { label:"3",    type:"char",  value:"3" },
+                { label:"sqrt", type:"fn",    value:"sqrt" },
+                { label:"xʸ",   type:"op",    value:"pow" },
+
+                { label:"0",    type:"char",  value:"0" },
+                { label: root.decimalSeparator, type: "char", value: root.decimalSeparator },
+                { label:"⌫",    type:"back",  value:"" },
+                { label:"±",    type:"fn",    value:"neg" },
+                { label:"dup",  type:"fn",    value:"dup" },
+
+                { label:"sin",  type:"fn",    value:"sin" },
+                { label:"cos",  type:"fn",    value:"cos" },
+                { label:"swap", type:"fn",    value:"swap" },
+                { label:"drop", type:"fn",    value:"drop" },
+                { label:"ENTER",type:"enter", value:"" }
+            ]
+
+            function simulatePress(rawInput) {
+                let targetLabel = ""
+                if (rawInput === "BACK") targetLabel = "⌫"
+                else if (rawInput === "ENTER") targetLabel = "ENTER"
+                else if (rawInput === "." || rawInput === ",") targetLabel = root.decimalSeparator
+                else if (rawInput === "+") targetLabel = "+"
+                else if (rawInput === "-") targetLabel = "-"
+                else if (rawInput === "*" || rawInput === "×") targetLabel = "×"
+                else if (rawInput === "/") targetLabel = "/"
+                else if (rawInput === "^") targetLabel = "xʸ"
+                // Mappings
+                else if (rawInput === "sin") targetLabel = "sin"
+                else if (rawInput === "cos") targetLabel = "cos"
+                else if (rawInput === "sqrt") targetLabel = "sqrt"
+                else if (rawInput === "neg") targetLabel = "±"
+                else if (rawInput === "dup") targetLabel = "dup"
+                else if (rawInput === "drop") targetLabel = "drop"
+                else if (rawInput === "swap") targetLabel = "swap"
+                else if (!isNaN(parseInt(rawInput))) targetLabel = rawInput // 0-9
+
+                for (let i = 0; i < keypadRep.count; i++) {
+                    const btn = keypadRep.itemAt(i)
+                    const data = keypad.keys[i]
+                    if (data.label === targetLabel) {
+                        btn.flash()
+                        root.keypadAction(data)
+                        return true
+                    }
+                }
+                return false
+            }
+
+            function focusFirst() {
+                const b = keypadRep.itemAt(0)
+                if (b) b.forceActiveFocus()
+            }
+
+            function relinkNav() {
+                const cols = keypad.columns
+                const n = keypadRep.count
+                for (let i = 0; i < n; i++) {
+                    const b = keypadRep.itemAt(i)
+                    if (!b) continue
+                    const leftIndex  = (i % cols === 0) ? -1 : (i - 1)
+                    const rightIndex = (i % cols === cols - 1) ? -1 : (i + 1)
+                    const upIndex    = (i - cols >= 0) ? (i - cols) : -1
+                    const downIndex  = (i + cols < n) ? (i + cols) : -1
+                    b.KeyNavigation.left  = (leftIndex  >= 0) ? keypadRep.itemAt(leftIndex)  : null
+                    b.KeyNavigation.right = (rightIndex >= 0) ? keypadRep.itemAt(rightIndex) : null
+                    b.KeyNavigation.down  = (downIndex  >= 0) ? keypadRep.itemAt(downIndex)  : null
+                    if (i < cols) b.KeyNavigation.up = input
+                    else          b.KeyNavigation.up = keypadRep.itemAt(upIndex)
+                }
+            }
+
+            Repeater {
+                id: keypadRep
+                model: keypad.keys
+                delegate: KeyButton { key: modelData }
+                onItemAdded: Qt.callLater(keypad.relinkNav)
+                onItemRemoved: Qt.callLater(keypad.relinkNav)
+            }
+            Component.onCompleted: Qt.callLater(keypad.relinkNav)
+        }
+    }
+
+    // Toast Popup
+    Popup {
+        id: toast
+        modal: false; focus: false; closePolicy: Popup.NoAutoClose; padding: 10
+        property string text: ""
+        x: (parent.width - width) / 2
+        y: parent.height - height - 16
+        background: Rectangle { radius: 10; color: toast.palette.window; border.color: toast.palette.mid; border.width: 1; opacity: 0.95 }
+        contentItem: Text { text: toast.text; color: toast.palette.text; wrapMode: Text.Wrap; width: Math.min(parent.width * 0.9, 360) }
+        Timer { id: toastTimer; interval: 3000; repeat: false; onTriggered: toast.close() }
+        function show(msg) { toast.text = msg; toast.open(); toastTimer.restart() }
+    }
+}

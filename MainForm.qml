@@ -6,37 +6,28 @@ import Qt5Compat.GraphicalEffects
 
 Item {
     id: root
+    focus: true // Root musi mieć focus, aby odbierać klawisze
 
-    // ===== Publiczne API + ATRAPY DLA DESIGNERA =====
+    // Wymuszamy focus na starcie
+    Component.onCompleted: forceActiveFocus()
 
-    // 1. Zamiast 'null', dajemy tu ListModel z przykładowymi danymi.
-    // C++ nadpisze to przy uruchomieniu, ale Designer zobaczy te liczby.
-    property var stackModel: ListModel {
-        ListElement { value: "3.1415926" } // Atrapa 1
-        ListElement { value: "125.00" }    // Atrapa 2
-        ListElement { value: "42" }        // Atrapa 3
-    }
-
-    // 2. Domyślny tekst historii, żeby Designer nie był pusty
-    property string historyText: "3 Enter\n4 +\nResult: 7"
-
-    // 3. Domyślny separator
+    // ===== API =====
+    property var stackModel: null
+    property string historyText: ""
     property string decimalSeparator: "."
-
-    property bool canUndo: true  // Ustaw na true, żeby przyciski były aktywne w podglądzie
+    property bool canUndo: false
     property bool canRedo: false
 
     // Aliases
-    property alias inputText: input.text
-    property alias inputItem: input
-    // Stack interaction
+    property alias inputText: displayLabel.text // Tekst na ekranie LCD
+    property alias inputItem: root // Root udaje input
+
     property alias stackCurrentIndex: stackList.currentIndex
     readonly property int stackCount: stackList.count
 
-    // Musimy zabezpieczyć sprawdzanie editing, bo stackList może nie być gotowy w Designerze
     readonly property bool isStackEditing: (stackList && stackList.currentItem) ? stackList.currentItem.editing : false
 
-    // Signals (Outputs) - bez zmian
+    // Signals
     signal inputEnter()
     signal keypadAction(var key)
     signal pushPi()
@@ -44,17 +35,53 @@ Item {
     signal undoRequest()
     signal redoRequest()
     signal clearAllRequest()
+    signal clearHistoryRequest() // Sygnał do czyszczenia historii
     signal stackRemoveRequest(int index)
     signal stackMoveRequest(int delta)
     signal stackValueSet(int row, string text)
 
-    // Methods needed by controller
-    function forceInputFocus() { input.forceActiveFocus() }
+    function forceInputFocus() { root.forceActiveFocus() }
     function ensureStackVisible(idx) { stackList.positionViewAtIndex(idx, ListView.Visible) }
     function showToast(msg) { toast.show(msg) }
 
     function simulatePress(rawInput) {
         return keypad.simulatePress(rawInput)
+    }
+
+    // ===== OBSŁUGA KLAWISZY (Zamiast TextField) =====
+    Keys.onPressed: (event) => {
+        if (isStackEditing) return;
+
+        // 1. Shift + Strzałki (Przesuwanie stosu)
+        if (event.modifiers & Qt.ShiftModifier) {
+            if (event.key === Qt.Key_Up) {
+                root.stackMoveRequest(-1)
+                event.accepted = true
+                return
+            }
+            if (event.key === Qt.Key_Down) {
+                root.stackMoveRequest(1)
+                event.accepted = true
+                return
+            }
+        }
+
+        // 2. Strzałka w dół -> wejście na klawiaturę
+        if (event.key === Qt.Key_Down) {
+            keypad.focusFirst()
+            event.accepted = true
+            return
+        }
+
+        // 3. Pisanie i Enter
+        let raw = event.text
+        if (event.key === Qt.Key_Backspace) raw = "BACK"
+        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) raw = "ENTER"
+        else if (event.key === Qt.Key_Escape) raw = "CLEAR"
+
+        if (keypad.simulatePress(raw)) {
+            event.accepted = true
+        }
     }
 
     // ===== Style =====
@@ -63,7 +90,7 @@ Item {
     readonly property int stackMinH: 200
     readonly property int historyMinH: 140
 
-    // ===== Reusable Component: KeyButton =====
+    // ===== Component: KeyButton =====
     component KeyButton: Button {
         id: btn
         property var key
@@ -73,49 +100,64 @@ Item {
         Layout.minimumHeight: 20
         Layout.maximumHeight: 34
         text: key.label
+        Keys.forwardTo: [root]
 
-        Timer {
-            id: releaseTimer; interval: 100
-            onTriggered: btn.down = false
+        Timer { id: releaseTimer; interval: 100; onTriggered: btn.down = false }
+        function flash() { btn.down = true; releaseTimer.restart() }
+        onClicked: {
+            root.keypadAction(key)
+            // Nie zabieramy focusu przycisku, żeby działała nawigacja strzałkami
         }
-        function flash() {
-            btn.down = true; releaseTimer.restart()
-        }
-        onClicked: root.keypadAction(key)
 
-        Keys.onReturnPressed: function(e) { e.accepted = false }
-        Keys.onEnterPressed:  function(e) { e.accepted = false }
-        Keys.onEscapePressed: function(e) { input.forceActiveFocus(); e.accepted = true }
+        // ESC wraca do ekranu
+        Keys.onEscapePressed: (e) => { root.forceActiveFocus(); e.accepted = true }
+
+        // Blokujemy Enter na przycisku, żeby działał globalny skrót "Wpisz na stos"
+        Keys.onReturnPressed: (e) => { e.accepted = false }
+        Keys.onEnterPressed:  (e) => { e.accepted = false }
+        Keys.onSpacePressed: (e) => {
+            if (!e.isAutoRepeat) {
+                btn.flash()            // 1. Wymuś mignięcie
+                root.keypadAction(key) // 2. Wykonaj akcję
+            }
+            e.accepted = true          // 3. Zablokuj domyślne zachowanie
+        }
     }
 
-    // ===== Layout Content =====
+    // ===== Layout =====
     ColumnLayout {
         anchors.fill: parent
         spacing: 10
 
-        // Input Field
-        TextField {
-            id: input
+        // EKRAN LCD (Zamiast TextField)
+        Rectangle {
             Layout.fillWidth: true
-            font.family: "Monospace"
-            font.pointSize: 16
-            horizontalAlignment: Text.AlignRight
-            inputMethodHints: Qt.ImhFormattedNumbersOnly
-            focus: true
+            Layout.preferredHeight: 50
+            color: root.palette.base
+            radius: 8
+            border.color: root.palette.mid
+            border.width: 1
 
-            Keys.onDownPressed: function(e) { keypad.focusFirst(); e.accepted = true }
-            Keys.onPressed: function(e) {
-                let raw = e.text
-                if (e.key === Qt.Key_Backspace) raw = "BACK"
-                else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) raw = "ENTER"
+            MouseArea {
+                anchors.fill: parent
+                onClicked: root.forceActiveFocus()
+            }
 
-                if (keypad.simulatePress(raw)) {
-                    e.accepted = true
-                }
+            Text {
+                id: displayLabel
+                anchors.fill: parent
+                anchors.margins: 10
+                text: ""
+                font.family: "Monospace"
+                font.pointSize: 20
+                horizontalAlignment: Text.AlignRight
+                verticalAlignment: Text.AlignVCenter
+                color: root.palette.text
+                elide: Text.ElideLeft
             }
         }
 
-        // Top Toolbar
+        // Toolbar
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
@@ -124,19 +166,14 @@ Item {
             Button { text: "↶"; enabled: root.canUndo; onClicked: root.undoRequest() }
             Button { text: "↷"; enabled: root.canRedo; onClicked: root.redoRequest() }
             Item { Layout.fillWidth: true }
-            Button {
-                text: "CLR"
-                onClicked: root.clearAllRequest()
-            }
+            Button { text: "CLR"; onClicked: root.clearAllRequest() }
         }
 
-        // SplitView (Stack + History)
+        // SplitView
         SplitView {
             id: panes
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            orientation: Qt.Vertical
-            clip: true
+            Layout.fillWidth: true; Layout.fillHeight: true
+            orientation: Qt.Vertical; clip: true
 
             handle: Rectangle {
                 implicitHeight: root.splitHandleH
@@ -145,7 +182,7 @@ Item {
                 radius: 4
             }
 
-            // Logic for ratio saving/restoring (visual only)
+            // Ratio logic
             property real stackRatio: 0.70
             property bool applying: false
             function applyRatio() {
@@ -165,15 +202,14 @@ Item {
             onHeightChanged: applyRatio()
             Component.onCompleted: Qt.callLater(applyRatio)
             Timer {
-                id: sampleRatio
-                interval: 0; repeat: false
+                id: sampleRatio; interval: 0; repeat: false
                 onTriggered: {
                     if (panes.applying) return
                     const available = Math.max(1, panes.height - root.splitHandleH)
                     panes.stackRatio = Math.max(0.05, Math.min(0.95, stackFrame.height / available))
                 }
             }
-            Connections { target: stackFrame;   function onHeightChanged() { sampleRatio.restart() } }
+            Connections { target: stackFrame; function onHeightChanged() { sampleRatio.restart() } }
             Connections { target: historyFrame; function onHeightChanged() { sampleRatio.restart() } }
 
             // Stack Frame
@@ -182,12 +218,10 @@ Item {
                 padding: 0
                 SplitView.minimumHeight: root.stackMinH
                 background: Rectangle {
-                    id: stackBg
-                    radius: root.cornerRadius
-                    color: stackFrame.palette.window
-                    border.color: stackFrame.palette.mid
-                    border.width: 1
+                    id: stackBg; radius: root.cornerRadius
+                    color: stackFrame.palette.window; border.color: stackFrame.palette.mid; border.width: 1
                 }
+
                 Item {
                     id: stackClip
                     anchors.fill: parent
@@ -196,21 +230,19 @@ Item {
                     layer.smooth: true
                     layer.effect: OpacityMask {
                         maskSource: Rectangle {
-                            width: stackClip.width
-                            height: stackClip.height
+                            width: stackClip.width; height: stackClip.height
                             radius: Math.max(0, root.cornerRadius - stackBg.border.width)
                             color: "white"
                         }
                     }
                     RowLayout {
-                        anchors.fill: parent
-                        spacing: 0
+                        anchors.fill: parent; spacing: 0
+
                         ListView {
                             id: stackList
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
+                            Layout.fillWidth: true; Layout.fillHeight: true
                             clip: true
-                            model: root.stackModel // Using passed model
+                            model: root.stackModel
                             currentIndex: -1
                             property int rowHeight: 40
                             property bool showStackBar: false
@@ -219,19 +251,15 @@ Item {
                             onMovementStarted: { stackList.showStackBar = true; stackBarTimer.restart() }
                             onMovementEnded: stackBarTimer.restart()
                             ScrollBar.vertical: ScrollBar {
-                                id: stackVBar
-                                policy: ScrollBar.AsNeeded
-                                hoverEnabled: true
+                                id: stackVBar; policy: ScrollBar.AsNeeded; hoverEnabled: true
                                 z: 100; width: 12; padding: 2
                                 readonly property bool needed: stackList.contentHeight > stackList.height + 1
-                                visible: needed
-                                opacity: needed ? 1 : 0
+                                visible: needed; opacity: needed ? 1 : 0
                                 Behavior on opacity { NumberAnimation { duration: 120 } }
                             }
                             delegate: Item {
                                 id: rowItem
-                                width: stackList.width
-                                height: stackList.rowHeight
+                                width: stackList.width; height: stackList.rowHeight
                                 property bool editing: false
                                 readonly property bool isSelected: ListView.isCurrentItem
                                 HoverHandler { id: hoverH }
@@ -248,10 +276,10 @@ Item {
                                 }
                                 MouseArea {
                                     id: rowMouse
-                                    anchors.left: parent.left; anchors.right: removeBtn.left; anchors.top: parent.top; anchors.bottom: parent.bottom
+                                    anchors.left: parent.left; anchors.right: removeBtn.left
+                                    anchors.top: parent.top; anchors.bottom: parent.bottom
                                     enabled: !rowItem.editing
-                                    acceptedButtons: Qt.LeftButton
-                                    onClicked: { stackList.currentIndex = index; input.forceActiveFocus() }
+                                    onClicked: { stackList.currentIndex = index; root.forceActiveFocus() }
                                     onDoubleClicked: {
                                         stackList.currentIndex = index
                                         rowItem.editing = true
@@ -270,7 +298,8 @@ Item {
                                 Rectangle {
                                     id: vSep
                                     width: 1
-                                    anchors.left: idxText.right; anchors.leftMargin: 12; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.topMargin: 4; anchors.bottomMargin: 4
+                                    anchors.left: idxText.right; anchors.leftMargin: 12
+                                    anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.topMargin: 4; anchors.bottomMargin: 4
                                     color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.mid
                                     opacity: 0.5
                                 }
@@ -292,21 +321,18 @@ Item {
                                     selectByMouse: true
                                     Keys.priority: Keys.BeforeItem
                                     function commit() {
-                                        // Emit signal instead of calling model directly, though direct call to setValueAt via property is also okay if model is valid
-                                        // But to keep it clean, we signal. However, setValueAt returns bool, so we might need direct access if we want validation feedback here.
-                                        // Since stackModel is passed as property, we can call it.
                                         if (root.stackModel && root.stackModel.setValueAt(index, text)) {
                                             rowItem.editing = false
-                                            input.forceActiveFocus()
+                                            root.forceActiveFocus()
                                         } else {
                                             toast.show("Nieprawidłowa liczba")
                                             forceActiveFocus()
                                             selectAll()
                                         }
                                     }
-                                    Keys.onReturnPressed: function(e) { commit(); e.accepted = true }
-                                    Keys.onEnterPressed:  function(e) { commit(); e.accepted = true }
-                                    Keys.onEscapePressed: function(e) { rowItem.editing = false; input.forceActiveFocus(); e.accepted = true }
+                                    Keys.onReturnPressed: (e) => { commit(); e.accepted = true }
+                                    Keys.onEnterPressed:  (e) => { commit(); e.accepted = true }
+                                    Keys.onEscapePressed: (e) => { rowItem.editing = false; root.forceActiveFocus(); e.accepted = true }
                                     onEditingFinished: { if (rowItem.editing) commit() }
                                 }
                                 MouseArea {
@@ -323,7 +349,8 @@ Item {
                                 }
                             }
                         }
-                        // Arrows Panel
+
+                        // Panel boczny ze strzałkami
                         Rectangle {
                             id: arrowsPanel
                             Layout.preferredWidth: 48; Layout.fillHeight: true
@@ -339,15 +366,28 @@ Item {
                     }
                 }
             }
+
             // History Frame
             Frame {
                 id: historyFrame
                 padding: 6
                 SplitView.minimumHeight: root.historyMinH
                 background: Rectangle { radius: root.cornerRadius; color: historyFrame.palette.window; border.color: historyFrame.palette.mid; border.width: 1 }
+
                 ColumnLayout {
                     anchors.fill: parent; spacing: 6
-                    RowLayout { Layout.fillWidth: true; Label { text: "History"; opacity: 0.85 } Item { Layout.fillWidth: true } ToolButton { text: "Clear"; onClicked: root.clearAllRequest() } } // Or separate clear history signal
+                    // NAGŁÓWEK HISTORII
+                    RowLayout {
+                        Layout.fillWidth: true;
+                        Label { text: "History"; opacity: 0.85 }
+                        Item { Layout.fillWidth: true }
+                        ToolButton {
+                            text: "Clear"
+                            // Emitujemy sygnał czyszczenia samej historii
+                            onClicked: root.clearHistoryRequest()
+                        }
+                    }
+
                     Flickable {
                         id: historyFlick; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; boundsBehavior: Flickable.StopAtBounds; flickableDirection: Flickable.AutoFlickDirection
                         contentWidth: historyTextDisplay.implicitWidth; contentHeight: historyTextDisplay.implicitHeight
@@ -397,7 +437,6 @@ Item {
                 { label:"1",    type:"char",  value:"1" },
                 { label:"2",    type:"char",  value:"2" },
                 { label:"3",    type:"char",  value:"3" },
-                // { label:"sqrt", type:"fn",    value:"sqrt" },
                 { label:"ˣ√ᵧ", type:"op",    value:"root" },
                 { label:"xʸ",   type:"op",    value:"pow" },
 
@@ -416,6 +455,8 @@ Item {
 
             function simulatePress(rawInput) {
                 let targetLabel = ""
+                const lower = rawInput.toLowerCase ? rawInput.toLowerCase() : rawInput
+
                 if (rawInput === "BACK") targetLabel = "⌫"
                 else if (rawInput === "ENTER") targetLabel = "ENTER"
                 else if (rawInput === "." || rawInput === ",") targetLabel = root.decimalSeparator
@@ -424,16 +465,16 @@ Item {
                 else if (rawInput === "*" || rawInput === "×") targetLabel = "×"
                 else if (rawInput === "/") targetLabel = "/"
                 else if (rawInput === "^") targetLabel = "xʸ"
-                // Mappings
-                else if (rawInput === "sin") targetLabel = "sin"
-                else if (rawInput === "cos") targetLabel = "cos"
-                // else if (rawInput === "sqrt") targetLabel = "sqrt"
-                else if (rawInput === "root" || rawInput === "sqrt") targetLabel = "ˣ√ᵧ"
-                else if (rawInput === "neg") targetLabel = "±"
-                else if (rawInput === "dup") targetLabel = "dup"
-                else if (rawInput === "drop") targetLabel = "drop"
-                else if (rawInput === "inv" || rawInput === "recip") targetLabel = "1/x"
-                else if (!isNaN(parseInt(rawInput))) targetLabel = rawInput // 0-9
+
+                else if (lower === "n") targetLabel = "±"
+                else if (lower === "r") targetLabel = "ˣ√ᵧ"
+                else if (lower === "s") targetLabel = "sin"
+                else if (lower === "c") targetLabel = "cos"
+                else if (lower === "d") targetLabel = "dup"
+                else if (lower === "x") targetLabel = "drop"
+                else if (lower === "i") targetLabel = "1/x"
+
+                else if (!isNaN(parseInt(rawInput))) targetLabel = rawInput
 
                 for (let i = 0; i < keypadRep.count; i++) {
                     const btn = keypadRep.itemAt(i)
@@ -465,7 +506,8 @@ Item {
                     b.KeyNavigation.left  = (leftIndex  >= 0) ? keypadRep.itemAt(leftIndex)  : null
                     b.KeyNavigation.right = (rightIndex >= 0) ? keypadRep.itemAt(rightIndex) : null
                     b.KeyNavigation.down  = (downIndex  >= 0) ? keypadRep.itemAt(downIndex)  : null
-                    if (i < cols) b.KeyNavigation.up = input
+
+                    if (i < cols) b.KeyNavigation.up = root
                     else          b.KeyNavigation.up = keypadRep.itemAt(upIndex)
                 }
             }
@@ -481,13 +523,11 @@ Item {
         }
     }
 
-    // Toast Popup
     Popup {
         id: toast
-        modal: false; focus: false; closePolicy: Popup.NoAutoClose; padding: 10
-        property string text: ""
         x: (parent.width - width) / 2
         y: parent.height - height - 16
+        padding: 10
         background: Rectangle { radius: 10; color: toast.palette.window; border.color: toast.palette.mid; border.width: 1; opacity: 0.95 }
         contentItem: Text { text: toast.text; color: toast.palette.text; wrapMode: Text.Wrap; width: Math.min(parent.width * 0.9, 360) }
         Timer { id: toastTimer; interval: 3000; repeat: false; onTriggered: toast.close() }

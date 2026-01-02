@@ -311,13 +311,22 @@ void RpnEngine::dup()
     appendHistoryLine(QString("dup -> %1").arg(topAsString()));
 }
 
-void RpnEngine::swap()
+void RpnEngine::reciprocal()
 {
-    if (!m_model.has(2)) { error("Swap wymaga 2 elementów."); return; }
+    if (!require(1)) return;
+    double x; 
+    m_model.pop(x);
 
-    saveState();
-    m_model.swapTop();
-    appendHistoryLine("swap");
+    if (x == 0.0) {
+        m_model.push(x); // Przywróć wartość na stos
+        error("Dzielenie przez zero.");
+        return;
+    }
+
+    m_model.push(1.0 / x);
+    appendHistoryLine(QString("1/%1 -> %2")
+        .arg(QString::number(x, 'g', 15))
+        .arg(topAsString()));
 }
 
 void RpnEngine::drop()

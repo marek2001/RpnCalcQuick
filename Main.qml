@@ -149,7 +149,7 @@ ApplicationWindow {
                 else if (k.value === "neg")  win.op(rpn.neg)
                 else if (k.value === "dup")  win.op(rpn.dup)
                 else if (k.value === "drop") win.op(rpn.drop)
-                else if (k.value === "swap") win.op(rpn.swap)
+                else if (k.value === "inv")  win.op(rpn.reciprocal)
                 else if (k.value === "sin")  win.op(rpn.sin)
                 else if (k.value === "cos")  win.op(rpn.cos)
                 break
@@ -262,5 +262,6 @@ ApplicationWindow {
     Shortcut { sequence: "D"; onActivated: ui.simulatePress("dup") }
     Shortcut { sequence: "X"; onActivated: ui.simulatePress("drop") }
     Shortcut { sequence: "R"; onActivated: ui.simulatePress("sqrt") }
-    Shortcut { sequence: "W"; onActivated: ui.simulatePress("swap") }
+    Shortcut { sequence: "I"; onActivated: ui.simulatePress("inv") }
+    
 }

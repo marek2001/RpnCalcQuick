@@ -48,7 +48,7 @@ public:
 
     // stack ops
     Q_INVOKABLE void dup();
-    Q_INVOKABLE void swap();
+    Q_INVOKABLE void reciprocal();
     Q_INVOKABLE void drop();
     Q_INVOKABLE void clearAll();
 

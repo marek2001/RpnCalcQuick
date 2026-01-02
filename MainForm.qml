@@ -408,7 +408,7 @@ Item {
 
                 { label:"sin",  type:"fn",    value:"sin" },
                 { label:"cos",  type:"fn",    value:"cos" },
-                { label:"swap", type:"fn",    value:"swap" },
+                { label:"1/x",  type:"fn",    value:"inv" },
                 { label:"drop", type:"fn",    value:"drop" },
                 { label:"ENTER",type:"enter", value:"" }
             ]
@@ -430,7 +430,7 @@ Item {
                 else if (rawInput === "neg") targetLabel = "±"
                 else if (rawInput === "dup") targetLabel = "dup"
                 else if (rawInput === "drop") targetLabel = "drop"
-                else if (rawInput === "swap") targetLabel = "swap"
+                else if (rawInput === "inv" || rawInput === "recip") targetLabel = "1/x"
                 else if (!isNaN(parseInt(rawInput))) targetLabel = rawInput // 0-9
 
                 for (let i = 0; i < keypadRep.count; i++) {

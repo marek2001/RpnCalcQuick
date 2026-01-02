@@ -39,9 +39,10 @@ public:
     Q_INVOKABLE void mul();
     Q_INVOKABLE void div();
     Q_INVOKABLE void pow();
+    Q_INVOKABLE void root();
 
     // unarne
-    Q_INVOKABLE void sqrt();
+    //Q_INVOKABLE void sqrt();
     Q_INVOKABLE void sin();
     Q_INVOKABLE void cos();
     Q_INVOKABLE void neg();

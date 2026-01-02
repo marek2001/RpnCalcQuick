@@ -397,7 +397,8 @@ Item {
                 { label:"1",    type:"char",  value:"1" },
                 { label:"2",    type:"char",  value:"2" },
                 { label:"3",    type:"char",  value:"3" },
-                { label:"sqrt", type:"fn",    value:"sqrt" },
+                // { label:"sqrt", type:"fn",    value:"sqrt" },
+                { label:"ˣ√ᵧ", type:"op",    value:"root" },
                 { label:"xʸ",   type:"op",    value:"pow" },
 
                 { label:"0",    type:"char",  value:"0" },
@@ -426,7 +427,8 @@ Item {
                 // Mappings
                 else if (rawInput === "sin") targetLabel = "sin"
                 else if (rawInput === "cos") targetLabel = "cos"
-                else if (rawInput === "sqrt") targetLabel = "sqrt"
+                // else if (rawInput === "sqrt") targetLabel = "sqrt"
+                else if (rawInput === "root" || rawInput === "sqrt") targetLabel = "ˣ√ᵧ"
                 else if (rawInput === "neg") targetLabel = "±"
                 else if (rawInput === "dup") targetLabel = "dup"
                 else if (rawInput === "drop") targetLabel = "drop"

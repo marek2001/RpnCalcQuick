@@ -229,32 +229,78 @@ void RpnEngine::pow()
         .arg(topAsString()));
 }
 
-// ----- UNARNE -----
-
-void RpnEngine::sqrt()
+void RpnEngine::root()
 {
-    if (!require(1)) return;
+    // 1. Wymagamy teraz 2 liczb na stosie (podstawa i stopień)
+    if (!require(2)) return;
     saveState();
 
-    double x; 
-    m_model.pop(x);
+    double base, degree; 
+    // pop2 zdejmuje: b (góra stosu - stopień), a (pod spodem - podstawa)
+    pop2(base, degree); 
 
-    if (x < 0.0) {
-        m_model.push(x); // przywracamy
+    // 2. Zabezpieczenie: stopień pierwiastka nie może być zerem
+    if (degree == 0.0) {
+        m_model.push(base);   // przywracamy
+        m_model.push(degree);
         
-        // Cofamy saveState, bo błąd
+        // Cofamy saveState
         if (!m_undoStack.isEmpty()) m_undoStack.removeLast();
         emit canUndoChanged();
 
-        error("sqrt dla liczby ujemnej.");
+        error("Stopień pierwiastka równy 0.");
         return;
     }
 
-    m_model.push(std::sqrt(x));
-    appendHistoryLine(QString("sqrt(%1) -> %2")
-        .arg(QString::number(x, 'g', 15))
+    // 3. Obliczenie: y^(1/x)
+    // Uwaga: dla ujemnej podstawy i parzystego stopnia wynik jest zespolony (NaN w double)
+    double result = std::pow(base, 1.0 / degree);
+
+    if (!std::isfinite(result)) {
+        m_model.push(base);
+        m_model.push(degree);
+        if (!m_undoStack.isEmpty()) m_undoStack.removeLast();
+        emit canUndoChanged();
+        error("Błędny wynik (np. pierwiastek parzysty z liczby ujemnej).");
+        return;
+    }
+
+    m_model.push(result);
+
+    // 4. Logowanie w historii
+    // Używamy symbolu unicode (ⁿ√) lub zapisu tekstowego
+    appendHistoryLine(QString("%2 root %1 -> %3") // np. 3 root 8 -> 2
+        .arg(QString::number(base, 'g', 15))
+        .arg(QString::number(degree, 'g', 15))
         .arg(topAsString()));
 }
+
+// ----- UNARNE -----
+
+// void RpnEngine::sqrt()
+// {
+//     if (!require(1)) return;
+//     saveState();
+//
+//     double x; 
+//     m_model.pop(x);
+//
+//     if (x < 0.0) {
+//         m_model.push(x); // przywracamy
+//         
+//         // Cofamy saveState, bo błąd
+//         if (!m_undoStack.isEmpty()) m_undoStack.removeLast();
+//         emit canUndoChanged();
+//
+//         error("sqrt dla liczby ujemnej.");
+//         return;
+//     }
+//
+//     m_model.push(std::sqrt(x));
+//     appendHistoryLine(QString("sqrt(%1) -> %2")
+//         .arg(QString::number(x, 'g', 15))
+//         .arg(topAsString()));
+// }
 
 void RpnEngine::sin()
 {

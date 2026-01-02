@@ -138,14 +138,16 @@ ApplicationWindow {
             case "back":  win.backspace(); break
             case "enter": win.doEnter(); break
             case "op":
-                if      (k.value === "add") win.op(rpn.add)
+                if      (k.value === "root") win.op(rpn.root)
+                else if (k.value === "add") win.op(rpn.add)
                 else if (k.value === "sub") win.op(rpn.sub)
                 else if (k.value === "mul") win.op(rpn.mul)
                 else if (k.value === "div") win.op(rpn.div)
                 else if (k.value === "pow") win.op(rpn.pow)
                 break
             case "fn":
-                if      (k.value === "sqrt") win.op(rpn.sqrt)
+                if      (k.value === "root") win.op(rpn.root)
+                // if      (k.value === "sqrt") win.op(rpn.sqrt)
                 else if (k.value === "neg")  win.op(rpn.neg)
                 else if (k.value === "dup")  win.op(rpn.dup)
                 else if (k.value === "drop") win.op(rpn.drop)
@@ -261,7 +263,8 @@ ApplicationWindow {
     Shortcut { sequence: "N"; onActivated: ui.simulatePress("neg") }
     Shortcut { sequence: "D"; onActivated: ui.simulatePress("dup") }
     Shortcut { sequence: "X"; onActivated: ui.simulatePress("drop") }
-    Shortcut { sequence: "R"; onActivated: ui.simulatePress("sqrt") }
+    // Shortcut { sequence: "R"; onActivated: ui.simulatePress("sqrt") }
+    Shortcut { sequence: "R"; onActivated: ui.simulatePress("root") }
     Shortcut { sequence: "I"; onActivated: ui.simulatePress("inv") }
     
 }

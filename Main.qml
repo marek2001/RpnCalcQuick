@@ -23,7 +23,7 @@ ApplicationWindow {
     MainForm {
         id: ui
         anchors.fill: parent
-        focus: true // Ważne
+        focus: true
 
         stackModel: rpn.stackModel
         historyText: rpn.historyText
@@ -41,18 +41,31 @@ ApplicationWindow {
         onPushE: rpn.pushE()
         onUndoRequest: rpn.undo()
         onRedoRequest: rpn.redo()
-        onClearAllRequest: {
-            ui.inputText = ""
-            rpn.clearAll()
-            ui.forceInputFocus()
-        }
+        onClearAllRequest: win.clearAll()
         onClearHistoryRequest: rpn.clearHistory()
     }
 
     // --- LOGIC ---
+    function hasPendingInput() {
+        return ui.inputText.trim().length > 0
+    }
+
+    function commitPendingInput() {
+        if (!hasPendingInput()) return true
+        if (!rpn.enter(ui.inputText)) return false
+        ui.inputText = ""
+        return true
+    }
+
+    function clearAll() {
+        ui.inputText = ""
+        rpn.clearAll()
+        ui.forceInputFocus()
+    }
+
     function doEnter() {
-        if (ui.inputText.trim().length > 0) {
-            if (rpn.enter(ui.inputText)) ui.inputText = ""
+        if (hasPendingInput()) {
+            commitPendingInput()
         } else {
             rpn.dup()
         }
@@ -65,57 +78,75 @@ ApplicationWindow {
             ui.inputText = ui.inputText.slice(0, -1)
     }
 
-    function op(fn) {
-        if (ui.inputText.trim().length > 0) {
-            if (!rpn.enter(ui.inputText)) return
-            ui.inputText = ""
-        }
-        fn()
+    function op(callable) {
+        if (!commitPendingInput()) return
+        callable()
     }
+
+    readonly property var opMap: ({
+        add:  () => win.op(rpn.add),
+        sub:  () => win.op(rpn.sub),
+        mul:  () => win.op(rpn.mul),
+        div:  () => win.op(rpn.div),
+        pow:  () => win.op(rpn.pow),
+        root: () => win.op(rpn.root)
+    })
+
+    readonly property var fnMap: ({
+        neg:  () => win.op(rpn.neg),
+        dup:  () => win.op(rpn.dup),
+        drop: () => win.op(rpn.drop),
+        inv:  () => win.op(rpn.reciprocal),
+        sin:  () => win.op(rpn.sin),
+        cos:  () => win.op(rpn.cos)
+    })
 
     function handleKeypadTrigger(k) {
         switch (k.type) {
-            case "char":  win.appendChar(k.value); break
-            case "back":  win.backspace(); break
-            case "enter": win.doEnter(); break
-
-            case "op":
-                if      (k.value === "add") win.op(rpn.add)
-                else if (k.value === "sub") win.op(rpn.sub)
-                else if (k.value === "mul") win.op(rpn.mul)
-                else if (k.value === "div") win.op(rpn.div)
-                else if (k.value === "pow") win.op(rpn.pow)
-                else if (k.value === "root") win.op(rpn.root)
+            case "char":
+                win.appendChar(k.value)
                 break
-
-            case "fn":
-                if      (k.value === "neg")  win.op(rpn.neg)
-                else if (k.value === "dup")  win.op(rpn.dup)
-                else if (k.value === "drop") win.op(rpn.drop)
-                else if (k.value === "inv")  win.op(rpn.reciprocal)
-                else if (k.value === "sin")  win.op(rpn.sin)
-                else if (k.value === "cos")  win.op(rpn.cos)
+            case "back":
+                win.backspace()
                 break
+            case "enter":
+                win.doEnter()
+                break
+            case "op": {
+                const f = win.opMap[k.value]
+                if (f) f()
+                break
+            }
+            case "fn": {
+                const f = win.fnMap[k.value]
+                if (f) f()
+                break
+            }
         }
     }
 
     function removeStackAt(row) {
         if (row < 0 || row >= ui.stackCount) return
         const cur = ui.stackCurrentIndex
+
         rpn.stackModel.removeAt(row)
+
         if (ui.stackCount === 0) ui.stackCurrentIndex = -1
         else if (cur >= row) ui.stackCurrentIndex = Math.max(0, cur - 1)
+
         ui.ensureStackVisible(ui.stackCurrentIndex)
     }
 
     function moveSelectedStack(delta) {
         const i = ui.stackCurrentIndex
         if (i < 0) return
+
         if (delta < 0) {
             if (rpn.stackModel.moveUp(i)) ui.stackCurrentIndex = i - 1
         } else {
             if (rpn.stackModel.moveDown(i)) ui.stackCurrentIndex = i + 1
         }
+
         ui.ensureStackVisible(ui.stackCurrentIndex)
     }
 
@@ -124,10 +155,29 @@ ApplicationWindow {
         Native.Menu {
             title: "Notation"
             Native.MenuItemGroup { id: fmtGroup; exclusive: true }
-            Native.MenuItem { text: "Scientific";  checkable: true; checked: rpn.formatMode === 0; group: fmtGroup; onTriggered: rpn.formatMode = 0 }
-            Native.MenuItem { text: "Engineering"; checkable: true; checked: rpn.formatMode === 1; group: fmtGroup; onTriggered: rpn.formatMode = 1 }
-            Native.MenuItem { text: "Simple";      checkable: true; checked: rpn.formatMode === 2; group: fmtGroup; onTriggered: rpn.formatMode = 2 }
+            Native.MenuItem {
+                text: "Scientific"
+                checkable: true
+                checked: rpn.formatMode === 0
+                group: fmtGroup
+                onTriggered: rpn.formatMode = 0
+            }
+            Native.MenuItem {
+                text: "Engineering"
+                checkable: true
+                checked: rpn.formatMode === 1
+                group: fmtGroup
+                onTriggered: rpn.formatMode = 1
+            }
+            Native.MenuItem {
+                text: "Simple"
+                checkable: true
+                checked: rpn.formatMode === 2
+                group: fmtGroup
+                onTriggered: rpn.formatMode = 2
+            }
         }
+
         Native.Menu {
             id: precisionMenu
             title: "Precision"
@@ -145,19 +195,28 @@ ApplicationWindow {
                 onObjectRemoved: (i, o) => precisionMenu.removeItem(o)
             }
         }
+
         Native.Menu {
             title: "History"
             Native.MenuItem { text: "Clear history"; onTriggered: rpn.clearHistory() }
         }
+
         Native.Menu {
             title: "Edit"
             Native.MenuItem { text: "Undo"; shortcut: "Ctrl+Z"; enabled: rpn.canUndo; onTriggered: rpn.undo() }
             Native.MenuItem { text: "Redo"; shortcut: "Ctrl+Shift+Z"; enabled: rpn.canRedo; onTriggered: rpn.redo() }
         }
+
         Native.Menu {
             title: "Help"
-            Native.MenuItem { text: "Open GitHub Repository"; onTriggered: Qt.openUrlExternally("https://github.com/marek2001/RpnCalcQuick/") }
-            Native.MenuItem { text: "Instructions"; onTriggered: Qt.openUrlExternally("https://github.com/marek2001/RpnCalcQuick/#readme") }
+            Native.MenuItem {
+                text: "Open GitHub Repository"
+                onTriggered: Qt.openUrlExternally("https://github.com/marek2001/RpnCalcQuick/")
+            }
+            Native.MenuItem {
+                text: "Instructions"
+                onTriggered: Qt.openUrlExternally("https://github.com/marek2001/RpnCalcQuick/#readme")
+            }
             Native.MenuSeparator { }
             Native.MenuItem { text: "About"; onTriggered: aboutDialog.open() }
         }
@@ -170,7 +229,17 @@ ApplicationWindow {
         buttons: Native.MessageDialog.Ok
     }
 
-    // --- ZOSTAWIAMY TYLKO TE SKRÓTY (Resztę łapie MainForm) ---
-    Shortcut { sequence: "Shift+Up";   context: Qt.ApplicationShortcut; enabled: !ui.isStackEditing && ui.stackCurrentIndex > 0; onActivated: win.moveSelectedStack(-1) }
-    Shortcut { sequence: "Shift+Down"; context: Qt.ApplicationShortcut; enabled: !ui.isStackEditing && ui.stackCurrentIndex >= 0 && ui.stackCurrentIndex < ui.stackCount - 1; onActivated: win.moveSelectedStack(+1) }
+    // --- SHORTCUTS (MainForm handles the rest) ---
+    Shortcut {
+        sequence: "Shift+Up"
+        context: Qt.ApplicationShortcut
+        enabled: !ui.isStackEditing && ui.stackCurrentIndex > 0
+        onActivated: win.moveSelectedStack(-1)
+    }
+    Shortcut {
+        sequence: "Shift+Down"
+        context: Qt.ApplicationShortcut
+        enabled: !ui.isStackEditing && ui.stackCurrentIndex >= 0 && ui.stackCurrentIndex < ui.stackCount - 1
+        onActivated: win.moveSelectedStack(+1)
+    }
 }

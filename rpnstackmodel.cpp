@@ -49,16 +49,19 @@ double RpnStackModel::parseInput(const QString &text, bool *ok)
 
     // Obsługa a*10^b
     const int splitIdx = t.indexOf("*10^");
-    if (splitIdx > 0) {
-        QString aStr = t.left(splitIdx).trimmed();
-        const QString bStr = t.mid(splitIdx + 4).trimmed();
+    if (const int splitIdx = t.indexOf("*10^"); splitIdx > 0) {
+        const QString aStr = t.left(splitIdx);
+        const QString bStr = t.mid(splitIdx + 4);
 
-        bool okA = false, okB = false;
-        const double a = loc.toDouble(aStr, &okA);
-        const int b = bStr.toInt(&okB);
-
-        if (okA && okB) {
-            v = a * std::pow(10.0, b);
+        // ZAMIAST ręcznego liczenia: v = a * std::pow(10.0, b);
+        // Tworzymy standardowy ciąg naukowy (np. "1.23E5") i parsujemy go w całości.
+        // Dzięki temu unikamy błędu mnożenia floatów.
+        
+        QString scientificStr = aStr + "E" + bStr;
+        
+        v = QLocale::c().toDouble(scientificStr, &status);
+        
+        if (status) {
             status = std::isfinite(v);
         }
     } else {

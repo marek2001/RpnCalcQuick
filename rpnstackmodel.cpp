@@ -78,54 +78,49 @@ QString RpnStackModel::formatValue(double v) const
 
     const double absV = std::abs(v);
 
-    auto cleanZeros = [](QString s) -> QString {
-        if (s.contains('.')) {
+    const QLocale loc = QLocale::system();
+    const QChar dec = loc.decimalPoint().isEmpty() ? QChar('.') : loc.decimalPoint().at(0);
+
+    auto cleanZerosLocale = [&](QString s) -> QString {
+        if (s.contains(dec)) {
             while (s.endsWith('0')) s.chop(1);
-            if (s.endsWith('.')) s.chop(1);
+            if (s.endsWith(dec)) s.chop(1);
         }
         return s;
     };
 
     switch (m_mode) {
-    case Scientific: {
-        int exp = static_cast<int>(std::floor(std::log10(absV)));
-        double mant = v / std::pow(10.0, exp);
-        QString mantStr = cleanZeros(QString::number(mant, 'f', m_precision));
-        return QString("%1 * 10^%2").arg(mantStr).arg(exp);
-    }
-    case Engineering: {
-        int exp = static_cast<int>(std::floor(std::log10(absV)));
-        exp = (exp / 3) * 3;
-        double mant = v / std::pow(10.0, exp);
-        QString mantStr = cleanZeros(QString::number(mant, 'f', m_precision));
-        return QString("%1 * 10^%2").arg(mantStr).arg(exp);
-    }
-    case Simple:
-    default: {
-        // Simple: zawsze bez notacji naukowej, z grupowaniem wg locale systemu
-        const QLocale loc = QLocale::system();
+        case Scientific: {
+            int exp = static_cast<int>(std::floor(std::log10(absV)));
+            double mant = v / std::pow(10.0, exp);
 
-        // max miejsc po przecinku w Simple:
-        // jeśli chcesz stałe np. 12, to ustaw: const int fracDigits = 12;
-        const int fracDigits = qBound(0, m_precision, 17);
-
-        QString s = loc.toString(v, 'f', fracDigits);
-
-        // usuń końcowe zera + separator dziesiętny, jeśli niepotrzebny
-        const QChar dec = loc.decimalPoint().isEmpty() ? QChar('.') : loc.decimalPoint().at(0);
-        if (s.contains(dec)) {
-            while (s.endsWith('0')) s.chop(1);
-            if (s.endsWith(dec)) s.chop(1);
+            QString mantStr = cleanZerosLocale(loc.toString(mant, 'f', m_precision));
+            return QString("%1 * 10^%2").arg(mantStr).arg(exp);
         }
+        case Engineering: {
+            int exp = static_cast<int>(std::floor(std::log10(absV)));
+            exp = (exp / 3) * 3;
+            double mant = v / std::pow(10.0, exp);
 
-        // -0 -> 0
-        if (s == QStringLiteral("-0"))
-            s = QStringLiteral("0");
+            QString mantStr = cleanZerosLocale(loc.toString(mant, 'f', m_precision));
+            return QString("%1 * 10^%2").arg(mantStr).arg(exp);
+        }
+        case Simple:
+        default: {
+            // Simple: zawsze bez notacji naukowej + grupowanie wg locale
+            const int fracDigits = qBound(0, m_precision, 17); // albo stałe np. 12
+            QString s = loc.toString(v, 'f', fracDigits);
 
-        return s;
-    }
+            s = cleanZerosLocale(s);
+
+            if (s == QStringLiteral("-0"))
+                s = QStringLiteral("0");
+
+            return s;
+        }
     }
 }
+
 
 QVariant RpnStackModel::data(const QModelIndex &index, int role) const
 {

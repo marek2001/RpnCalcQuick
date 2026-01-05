@@ -1,5 +1,7 @@
 #include "rpnstackmodel.h"
+
 #include <QLocale>
+#include <QtGlobal>
 #include <cmath>
 
 RpnStackModel::RpnStackModel(QObject *parent)
@@ -27,8 +29,20 @@ double RpnStackModel::parseInput(const QString &text, bool *ok)
         return 0.0;
     }
 
-    t.replace(',', '.');
+    const QLocale loc = QLocale::system();
+
+    // Usuń typowe separatory grupowania
     t.remove(' ');
+    t.remove(QChar(0x00A0));        // NBSP (często jako separator tysięcy)
+    t.remove(loc.groupSeparator()); // separator grupowania wg locale
+    t.remove('\'');                 // czasem apostrof (np. CH)
+
+    // Normalizuj separator dziesiętny: akceptuj zarówno '.' jak i ','
+    const QChar dec = loc.decimalPoint().isEmpty() ? QChar('.') : loc.decimalPoint().at(0);
+    if (dec == ',')
+        t.replace('.', ',');
+    else
+        t.replace(',', '.');
 
     double v = 0.0;
     bool status = false;
@@ -36,11 +50,11 @@ double RpnStackModel::parseInput(const QString &text, bool *ok)
     // Obsługa a*10^b
     const int splitIdx = t.indexOf("*10^");
     if (splitIdx > 0) {
-        const QString aStr = t.left(splitIdx);
-        const QString bStr = t.mid(splitIdx + 4);
+        QString aStr = t.left(splitIdx).trimmed();
+        const QString bStr = t.mid(splitIdx + 4).trimmed();
 
         bool okA = false, okB = false;
-        const double a = QLocale::c().toDouble(aStr, &okA);
+        const double a = loc.toDouble(aStr, &okA);
         const int b = bStr.toInt(&okB);
 
         if (okA && okB) {
@@ -48,7 +62,7 @@ double RpnStackModel::parseInput(const QString &text, bool *ok)
             status = std::isfinite(v);
         }
     } else {
-        v = QLocale::c().toDouble(t, &status);
+        v = loc.toDouble(t, &status);
         if (status) status = std::isfinite(v);
     }
 
@@ -87,8 +101,29 @@ QString RpnStackModel::formatValue(double v) const
         return QString("%1 * 10^%2").arg(mantStr).arg(exp);
     }
     case Simple:
-    default:
-        return QString::number(v, 'g', 15);
+    default: {
+        // Simple: zawsze bez notacji naukowej, z grupowaniem wg locale systemu
+        const QLocale loc = QLocale::system();
+
+        // max miejsc po przecinku w Simple:
+        // jeśli chcesz stałe np. 12, to ustaw: const int fracDigits = 12;
+        const int fracDigits = qBound(0, m_precision, 17);
+
+        QString s = loc.toString(v, 'f', fracDigits);
+
+        // usuń końcowe zera + separator dziesiętny, jeśli niepotrzebny
+        const QChar dec = loc.decimalPoint().isEmpty() ? QChar('.') : loc.decimalPoint().at(0);
+        if (s.contains(dec)) {
+            while (s.endsWith('0')) s.chop(1);
+            if (s.endsWith(dec)) s.chop(1);
+        }
+
+        // -0 -> 0
+        if (s == QStringLiteral("-0"))
+            s = QStringLiteral("0");
+
+        return s;
+    }
     }
 }
 
@@ -210,7 +245,7 @@ bool RpnStackModel::moveDown(int row)
 bool RpnStackModel::setValueAt(int row, const QString &text)
 {
     if (row < 0 || row >= m_stack.size()) return false;
-    
+
     bool ok = false;
     double v = parseInput(text, &ok);
     if (!ok) return false;

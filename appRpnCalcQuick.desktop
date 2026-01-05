@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=RpnCalcQuick
+GenericName=Calculator
+Comment=RPN calculator built with Qt Quick
+Exec=appRpnCalcQuick
+Icon=appRpnCalcQuick
+Categories=Utility;Calculator;Qt;
+Terminal=false
+StartupNotify=true

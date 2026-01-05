@@ -19,7 +19,7 @@ Item {
     property bool canUndo: false
     property bool canRedo: false
 
-    property string inputText: ""  // Changed from alias to separate property
+    property string inputText: ""
     property string displayText: formatDisplayText(inputText)
     property alias inputItem: root
 

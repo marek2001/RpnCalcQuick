@@ -171,6 +171,9 @@ ApplicationWindow {
     }
 
     // --- ZOSTAWIAMY TYLKO TE SKRÓTY (Resztę łapie MainForm) ---
-    Shortcut { sequence: "Shift+Up";   context: Qt.ApplicationShortcut; enabled: !ui.isStackEditing && ui.stackCurrentIndex > 0; onActivated: win.moveSelectedStack(-1) }
-    Shortcut { sequence: "Shift+Down"; context: Qt.ApplicationShortcut; enabled: !ui.isStackEditing && ui.stackCurrentIndex >= 0 && ui.stackCurrentIndex < ui.stackCount - 1; onActivated: win.moveSelectedStack(+1) }
+    Shortcut { sequence: "Shift+Up";   context: Qt.ApplicationShortcut;
+        enabled: !ui.isStackEditing && ui.stackCurrentIndex > 0; onActivated: win.moveSelectedStack(-1) }
+    Shortcut { sequence: "Shift+Down"; context: Qt.ApplicationShortcut;
+        enabled: !ui.isStackEditing && ui.stackCurrentIndex >= 0 && ui.stackCurrentIndex < ui.stackCount - 1;
+        onActivated: win.moveSelectedStack(+1) }
 }

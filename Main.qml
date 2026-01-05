@@ -1,7 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import Qt.labs.platform as Native
-import RpnCalc.Backend 0.6
+import RpnCalc.Backend
 import QtQml
 
 ApplicationWindow {

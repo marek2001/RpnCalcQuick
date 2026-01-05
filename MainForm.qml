@@ -83,7 +83,13 @@ Item {
     // ===== OBSŁUGA KLAWISZY (GLOBALNA) =====
     Keys.onPressed: (event) => {
         if (isStackEditing) return;
-
+        if (event.key === Qt.Key_F2) {
+            if (stackList.currentItem) {
+                stackList.currentItem.startEdit()
+                event.accepted = true
+            }
+            return
+        }
         if (event.modifiers & Qt.ShiftModifier) {
             if (event.key === Qt.Key_Up) { root.stackMoveRequest(-1); event.accepted = true; return }
             if (event.key === Qt.Key_Down) { root.stackMoveRequest(1); event.accepted = true; return }
@@ -241,13 +247,19 @@ Item {
                                 width: stackList.width; height: stackList.rowHeight
                                 property bool editing: false
                                 readonly property bool isSelected: ListView.isCurrentItem
+                                function startEdit() {
+                                    editing = true
+                                    editField.text = model.value
+                                    editField.forceActiveFocus()
+                                    editField.selectAll()
+                                }
                                 HoverHandler { id: hoverH }
                                 Rectangle { anchors.fill: parent; color: rowItem.isSelected ? stackFrame.palette.highlight : (hoverH.hovered ? Qt.lighter(root.palette.highlight, 1.6) : stackFrame.palette.base); opacity: rowItem.isSelected ? 1.0 : (hoverH.hovered ? 0.22 : 1.0); Behavior on color { ColorAnimation { duration: 80 } } Behavior on opacity { NumberAnimation { duration: 80 } } }
                                 Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 1; color: stackFrame.palette.mid }
                                 MouseArea {
                                     id: rowMouse; anchors.left: parent.left; anchors.right: removeBtn.left; anchors.top: parent.top; anchors.bottom: parent.bottom; enabled: !rowItem.editing
                                     acceptedButtons: Qt.LeftButton; onClicked: { stackList.currentIndex = index; root.forceActiveFocus() }
-                                    onDoubleClicked: { stackList.currentIndex = index; rowItem.editing = true; editField.text = model.value; editField.forceActiveFocus(); editField.selectAll() }
+                                    onDoubleClicked: { stackList.currentIndex = index; rowItem.startEdit()}
                                 }
                                 Text { id: idxText; anchors.left: parent.left; anchors.leftMargin: 12; anchors.verticalCenter: parent.verticalCenter; text: (index + 1).toString(); color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.text; font.family: "Monospace" }
                                 Rectangle { id: vSep; width: 1; anchors.left: idxText.right; anchors.leftMargin: 12; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.topMargin: 4; anchors.bottomMargin: 4; color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.mid; opacity: 0.5 }

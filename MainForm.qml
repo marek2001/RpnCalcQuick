@@ -1,3 +1,5 @@
+// noinspection LongLine
+
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
@@ -17,12 +19,12 @@ Item {
     property bool canUndo: false
     property bool canRedo: false
 
-    property alias inputText: displayLabel.text
+    property string inputText: ""  // Changed from alias to separate property
+    property string displayText: formatDisplayText(inputText)
     property alias inputItem: root
 
     property alias stackCurrentIndex: stackList.currentIndex
     readonly property int stackCount: stackList.count
-
     readonly property bool isStackEditing: (stackList && stackList.currentItem) ? stackList.currentItem.editing : false
 
     signal inputEnter()
@@ -43,6 +45,22 @@ Item {
 
     function simulatePress(rawInput) {
         return keypad.simulatePress(rawInput)
+    }
+
+    function formatDisplayText(raw) {
+        if (raw.trim() === "") return "";
+        let sep = Qt.locale().groupSeparator;
+        let dec = Qt.locale().decimalPoint;
+        let cleaned = raw.replace(/[^0-9.,\-]/g, '');  // Keep digits, decimal, comma, minus
+        let parts = cleaned.split(dec);
+        if (parts.length > 2) return raw;  // Invalid if multiple decimals
+        let intPart = parts[0];
+        let decPart = parts.length > 1 ? dec + parts[1] : '';
+        // Group integer part from the right
+        let reversed = intPart.split('').reverse().join('');
+        let grouped = reversed.replace(/(\d{3})(?=\d)/g, '$1' + sep);
+        let finalInt = grouped.split('').reverse().join('');
+        return finalInt + decPart;
     }
 
     // ===== 1. OBSŁUGA KLAWISZY NA EKRANIE (ROOT) =====
@@ -164,10 +182,12 @@ Item {
             Text {
                 id: displayLabel
                 anchors.fill: parent; anchors.margins: 10
-                text: ""; font.family: "Monospace"; font.pointSize: 20
+                text: displayText
+                font.family: "Monospace"; font.pointSize: 20
                 horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter
                 color: root.palette.text; elide: Text.ElideLeft
             }
+
         }
 
         // Toolbar

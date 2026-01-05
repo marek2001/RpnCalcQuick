@@ -16,7 +16,6 @@ qt_add_executable(appRpnCalcQuick MANUAL_FINALIZATION
         rpnhistorymodel.h
 )
 
-
 qt_add_qml_module(appRpnCalcQuick
         URI RpnCalc
         VERSION 1.0
@@ -28,9 +27,12 @@ qt_add_qml_module(appRpnCalcQuick
 target_link_libraries(appRpnCalcQuick PRIVATE
         Qt6::Quick Qt6::Qml Qt6::QuickControls2 Qt6::Widgets
 )
+
 qt_import_qml_plugins(appRpnCalcQuick)
 
 qt_finalize_executable(appRpnCalcQuick)
+
+qt_policy(SET QTP0001 NEW)
 
 include(GNUInstallDirs)
 
@@ -43,7 +45,6 @@ install(FILES appRpnCalcQuick.desktop
         RENAME appRpnCalcQuick.desktop
 )
 
-
- install(FILES appRpnCalcQuick.png
-         DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/128x128/apps
- )
+install(FILES appRpnCalcQuick.png
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/128x128/apps
+)

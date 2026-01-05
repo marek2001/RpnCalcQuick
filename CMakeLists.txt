@@ -37,3 +37,13 @@ include(GNUInstallDirs)
 install(TARGETS appRpnCalcQuick
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+
+install(FILES appRpnCalcQuick.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
+        RENAME appRpnCalcQuick.desktop
+)
+
+
+ install(FILES appRpnCalcQuick.png
+         DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/128x128/apps
+ )

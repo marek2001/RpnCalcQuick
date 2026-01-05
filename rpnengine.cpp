@@ -314,14 +314,13 @@ void RpnEngine::saveSessionState() const
     s.setValue("session/stack", list);
     s.setValue("session/historyText", m_historyText);
     s.setValue("session/formatMode", m_formatMode);
-    s.setValue("session/precision", m_precision);
 }
 
 void RpnEngine::loadSessionState()
 {
     QSettings s("marek2001", "RpnCalcQuick");
     setFormatMode(s.value("session/formatMode", m_formatMode).toInt());
-    setPrecision(s.value("session/precision", m_precision).toInt());
+
 
     const QVariantList list = s.value("session/stack").toList();
     QVector<double> snap;

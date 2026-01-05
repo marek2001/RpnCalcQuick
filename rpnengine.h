@@ -83,7 +83,7 @@ private:
     QString m_historyText;
     
     int m_formatMode = RpnStackModel::Simple;
-    int m_precision  = 9;
+    int m_precision  = 15;
     
     bool require(int n);
     void error(const QString &msg);

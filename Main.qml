@@ -129,23 +129,6 @@ ApplicationWindow {
             Native.MenuItem { text: "Simple";      checkable: true; checked: rpn.formatMode === 2; group: fmtGroup; onTriggered: rpn.formatMode = 2 }
         }
         Native.Menu {
-            id: precisionMenu
-            title: "Precision"
-            Native.MenuItemGroup { id: precGroup; exclusive: true }
-            Instantiator {
-                model: 16
-                delegate: Native.MenuItem {
-                    text: model.index.toString()
-                    checkable: true
-                    checked: rpn.precision === model.index
-                    group: precGroup
-                    onTriggered: rpn.precision = model.index
-                }
-                onObjectAdded: (i, o) => precisionMenu.insertItem(i, o)
-                onObjectRemoved: (i, o) => precisionMenu.removeItem(o)
-            }
-        }
-        Native.Menu {
             title: "History"
             Native.MenuItem { text: "Clear history"; onTriggered: rpn.clearHistory() }
         }

@@ -29,44 +29,49 @@ double RpnStackModel::parseInput(const QString &text, bool *ok)
         return 0.0;
     }
 
-    const QLocale loc = QLocale::system();
-
-    // Usuń typowe separatory grupowania
+    // 1. KLUCZOWE CZYSZCZENIE:
+    // QLocale::c() akceptuje TYLKO kropkę. Jeśli zostanie przecinek, parsowanie E zawiedzie.
+    t.replace(',', '.');
+    
+    // Usuwamy WSZYSTKIE spacje (zwykłe i twarde/niełamliwe), 
+    // bo "1.23 E 5" jest niepoprawne dla toDouble().
     t.remove(' ');
-    t.remove(QChar(0x00A0));        // NBSP (często jako separator tysięcy)
-    t.remove(loc.groupSeparator()); // separator grupowania wg locale
-    t.remove('\'');                 // czasem apostrof (np. CH)
-
-    // Normalizuj separator dziesiętny: akceptuj zarówno '.' jak i ','
-    const QChar dec = loc.decimalPoint().isEmpty() ? QChar('.') : loc.decimalPoint().at(0);
-    if (dec == ',')
-        t.replace('.', ',');
-    else
-        t.replace(',', '.');
+    t.remove(QChar(0xA0)); // U+00A0 (Non-breaking space)
 
     double v = 0.0;
     bool status = false;
 
-    // Obsługa a*10^b
-    const int splitIdx = t.indexOf("*10^");
+    // 2. Obsługa notacji naukowej "a*10^b"
     if (const int splitIdx = t.indexOf("*10^"); splitIdx > 0) {
         const QString aStr = t.left(splitIdx);
-        const QString bStr = t.mid(splitIdx + 4);
+        const QString bStr = t.mid(splitIdx + 4); // długość "*10^" to 4
 
-        // ZAMIAST ręcznego liczenia: v = a * std::pow(10.0, b);
-        // Tworzymy standardowy ciąg naukowy (np. "1.23E5") i parsujemy go w całości.
-        // Dzięki temu unikamy błędu mnożenia floatów.
-        
+        // Składamy format "mantysaEb", np. "1.23E5"
+        // Ponieważ t.replace() i t.remove() zadziałały wcześniej, 
+        // aStr ma już kropki i brak spacji.
         QString scientificStr = aStr + "E" + bStr;
         
         v = QLocale::c().toDouble(scientificStr, &status);
         
-        if (status) {
-            status = std::isfinite(v);
+        // ZABEZPIECZENIE (Fallback):
+        // Jeśli metoda E zawiedzie (np. dziwny format), spróbuj starej metody,
+        // żeby użytkownik nie utknął.
+        if (!status) {
+            bool okA = false, okB = false;
+            const double a = QLocale::c().toDouble(aStr, &okA);
+            const int b = bStr.toInt(&okB);
+            if (okA && okB) {
+                v = a * std::pow(10.0, b);
+                status = std::isfinite(v);
+            }
         }
     } else {
-        v = loc.toDouble(t, &status);
-        if (status) status = std::isfinite(v);
+        // 3. Standardowe parsowanie (np. 123.45)
+        v = QLocale::c().toDouble(t, &status);
+    }
+    
+    if (status) {
+        status = std::isfinite(v);
     }
 
     if (ok) *ok = status;
@@ -82,37 +87,48 @@ QString RpnStackModel::formatValue(double v) const
     const double absV = std::abs(v);
 
     const QLocale loc = QLocale::system();
-    const QChar dec = loc.decimalPoint().isEmpty() ? QChar('.') : loc.decimalPoint().at(0);
+    const QString decimalPoint = loc.decimalPoint();
 
     auto cleanZerosLocale = [&](QString s) -> QString {
-        if (s.contains(dec)) {
+        if (s.contains(decimalPoint)) {
             while (s.endsWith('0')) s.chop(1);
-            if (s.endsWith(dec)) s.chop(1);
+            if (s.endsWith(decimalPoint)) s.chop(decimalPoint.length());
         }
         return s;
     };
 
+    // Pomocnicza funkcja do formatowania naukowego (używana w Scientific i jako fallback w Simple)
+    auto formatScientific = [&](double val, int precision) -> QString {
+        int exp = static_cast<int>(std::floor(std::log10(std::abs(val))));
+        double mant = val / std::pow(10.0, exp);
+        QString mantStr = cleanZerosLocale(loc.toString(mant, 'f', precision));
+        return QString("%1 * 10^%2").arg(mantStr).arg(exp);
+    };
+
     switch (m_mode) {
         case Scientific: {
-            int exp = static_cast<int>(std::floor(std::log10(absV)));
-            double mant = v / std::pow(10.0, exp);
-
-            QString mantStr = cleanZerosLocale(loc.toString(mant, 'f', m_precision));
-            return QString("%1 * 10^%2").arg(mantStr).arg(exp);
+            return formatScientific(v, m_precision);
         }
         case Engineering: {
             int exp = static_cast<int>(std::floor(std::log10(absV)));
             exp = (exp / 3) * 3;
             double mant = v / std::pow(10.0, exp);
-
             QString mantStr = cleanZerosLocale(loc.toString(mant, 'f', m_precision));
             return QString("%1 * 10^%2").arg(mantStr).arg(exp);
         }
         case Simple:
         default: {
-            // Simple: zawsze bez notacji naukowej + grupowanie wg locale
-            const int fracDigits = qBound(0, m_precision, 17); // albo stałe np. 12
-            QString s = loc.toString(v, 'f', fracDigits);
+            // [POPRAWKA]
+            // Typ double ma precyzję ok. 15-16 cyfr znaczących.
+            // Jeśli liczba jest >= 1e15 (biliard), końcowe cyfry całkowite są "śmieciami".
+            // Wymuszamy wtedy notację naukową, aby ukryć błędy reprezentacji.
+            if (absV >= 1.0e15 || (absV > 0 && absV < 1.0e-15)) {
+                return formatScientific(v, 14); // 14 cyfr po przecinku to bezpieczny max
+            }
+
+            // Dla liczb mieszczących się w precyzji używamy normalnego zapisu 'f'
+            const int safePrecision = qBound(0, m_precision, 15);
+            QString s = loc.toString(v, 'f', safePrecision);
 
             s = cleanZerosLocale(s);
 

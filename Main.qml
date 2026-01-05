@@ -23,7 +23,7 @@ ApplicationWindow {
     MainForm {
         id: ui
         anchors.fill: parent
-        focus: true // Ważne
+        focus: true
 
         stackModel: rpn.stackModel
         historyText: rpn.historyText
@@ -39,8 +39,8 @@ ApplicationWindow {
 
         onPushPi: rpn.pushPi()
         onPushE: rpn.pushE()
-        onUndoRequest: rpn.undo()
-        onRedoRequest: rpn.redo()
+        onUndoRequest: win.keepFocus(() => rpn.undo())
+        onRedoRequest: win.keepFocus(() => rpn.redo())
         onClearAllRequest: {
             ui.inputText = ""
             rpn.clearAll()
@@ -50,27 +50,57 @@ ApplicationWindow {
     }
 
     // --- LOGIC ---
-    function doEnter() {
-        if (ui.inputText.trim().length > 0) {
-            if (rpn.enter(ui.inputText)) ui.inputText = ""
-        } else {
-            rpn.dup()
+
+    // [NAPRAWA] Brakująca funkcja keepFocus
+    function keepFocus(doWork) {
+        const prev = win.activeFocusItem;
+        doWork();
+        // Jeśli focus uciekł (ale nie do pola edycji), przywracamy go
+        if (prev && prev !== ui.inputItem && win.activeFocusItem === ui.inputItem) {
+            prev.forceActiveFocus();
         }
     }
 
-    function appendChar(s) { ui.inputText += s }
+    function doEnter() {
+        keepFocus(() => {
+            if (ui.inputText.trim().length > 0) {
+                if (rpn.enter(ui.inputText)) ui.inputText = ""
+            } else {
+                rpn.dup()
+            }
+        })
+    }
+
+    function appendChar(s) {
+        keepFocus(() => {
+            // [ZABEZPIECZENIE] Blokada wpisywania powyżej 15 cyfr
+            const isDigit = (s >= '0' && s <= '9');
+            if (isDigit) {
+                const currentDigits = ui.inputText.replace(/[^0-9]/g, "").length;
+                if (currentDigits >= 15) {
+                    ui.showToast("Maksymalna precyzja (15 cyfr)");
+                    return;
+                }
+            }
+            ui.inputText += s
+        })
+    }
 
     function backspace() {
-        if (ui.inputText.length > 0)
-            ui.inputText = ui.inputText.slice(0, -1)
+        keepFocus(() => {
+            if (ui.inputText.length > 0)
+                ui.inputText = ui.inputText.slice(0, -1)
+        })
     }
 
     function op(fn) {
-        if (ui.inputText.trim().length > 0) {
-            if (!rpn.enter(ui.inputText)) return
-            ui.inputText = ""
-        }
-        fn()
+        keepFocus(() => {
+            if (ui.inputText.trim().length > 0) {
+                if (!rpn.enter(ui.inputText)) return
+                ui.inputText = ""
+            }
+            fn()
+        })
     }
 
     function handleKeypadTrigger(k) {
@@ -106,6 +136,7 @@ ApplicationWindow {
         if (ui.stackCount === 0) ui.stackCurrentIndex = -1
         else if (cur >= row) ui.stackCurrentIndex = Math.max(0, cur - 1)
         ui.ensureStackVisible(ui.stackCurrentIndex)
+        ui.forceInputFocus()
     }
 
     function moveSelectedStack(delta) {
@@ -153,10 +184,34 @@ ApplicationWindow {
         buttons: Native.MessageDialog.Ok
     }
 
-    // --- ZOSTAWIAMY TYLKO TE SKRÓTY (Resztę łapie MainForm) ---
-    Shortcut { sequence: "Shift+Up";   context: Qt.ApplicationShortcut;
-        enabled: !ui.isStackEditing && ui.stackCurrentIndex > 0; onActivated: win.moveSelectedStack(-1) }
-    Shortcut { sequence: "Shift+Down"; context: Qt.ApplicationShortcut;
-        enabled: !ui.isStackEditing && ui.stackCurrentIndex >= 0 && ui.stackCurrentIndex < ui.stackCount - 1;
-        onActivated: win.moveSelectedStack(+1) }
+    readonly property bool allowGlobalTyping: !ui.isStackEditing
+
+    // Skróty
+    Shortcut { sequence: "Shift+Up";   context: Qt.ApplicationShortcut; enabled: !ui.isStackEditing && ui.stackCurrentIndex > 0; onActivated: win.moveSelectedStack(-1) }
+    Shortcut { sequence: "Shift+Down"; context: Qt.ApplicationShortcut; enabled: !ui.isStackEditing && ui.stackCurrentIndex >= 0 && ui.stackCurrentIndex < ui.stackCount - 1; onActivated: win.moveSelectedStack(+1) }
+
+    Shortcut { sequences: [ "Return", "Enter", StandardKey.InsertParagraphSeparator]; enabled: !ui.isStackEditing && !ui.inputItem.activeFocus; onActivated: ui.simulatePress("ENTER") }
+    Shortcut { sequence: "Backspace"; enabled: win.allowGlobalTyping && !ui.inputItem.activeFocus; onActivated: ui.simulatePress("BACK") }
+    Repeater { model: 10; delegate: Item { visible: false; Shortcut { sequence: modelData.toString(); context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping && !ui.inputItem.activeFocus; onActivated: ui.simulatePress(modelData.toString()) } } }
+    Item { visible: false; Shortcut { sequence: "."; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping && !ui.inputItem.activeFocus; onActivated: ui.simulatePress(".") } }
+    Item { visible: false; Shortcut { sequence: ","; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping && !ui.inputItem.activeFocus; onActivated: ui.simulatePress(",") } }
+
+    Shortcut { sequence: StandardKey.Undo; onActivated: rpn.undo() }
+    Shortcut { sequence: StandardKey.Redo; onActivated: rpn.redo() }
+    Shortcut { sequence: "+"; onActivated: ui.simulatePress("+") }
+    Shortcut { sequence: "-"; onActivated: ui.simulatePress("-") }
+    Shortcut { sequence: "*"; onActivated: ui.simulatePress("*") }
+    Shortcut { sequence: "/"; onActivated: ui.simulatePress("/") }
+    Shortcut { sequence: "^"; onActivated: ui.simulatePress("^") }
+    Shortcut { sequence: "Multiply"; onActivated: ui.simulatePress("*") }
+    Shortcut { sequence: "Divide";   onActivated: ui.simulatePress("/") }
+    Shortcut { sequence: "Add";      onActivated: ui.simulatePress("+") }
+    Shortcut { sequence: "Subtract"; onActivated: ui.simulatePress("-") }
+    Shortcut { sequence: "S"; onActivated: ui.simulatePress("sin") }
+    Shortcut { sequence: "C"; onActivated: ui.simulatePress("cos") }
+    Shortcut { sequence: "N"; onActivated: ui.simulatePress("neg") }
+    Shortcut { sequence: "D"; onActivated: ui.simulatePress("dup") }
+    Shortcut { sequence: "X"; onActivated: ui.simulatePress("drop") }
+    Shortcut { sequence: "R"; onActivated: ui.simulatePress("root") }
+    Shortcut { sequence: "I"; onActivated: ui.simulatePress("inv") }
 }

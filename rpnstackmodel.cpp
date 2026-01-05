@@ -85,10 +85,10 @@ QString RpnStackModel::formatValue(double v) const
     if (v == 0.0) return QStringLiteral("0");
 
     const double absV = std::abs(v);
-
     const QLocale loc = QLocale::system();
     const QString decimalPoint = loc.decimalPoint();
 
+    // Funkcja usuwająca końcowe zera (np. "1.500" -> "1.5")
     auto cleanZerosLocale = [&](QString s) -> QString {
         if (s.contains(decimalPoint)) {
             while (s.endsWith('0')) s.chop(1);
@@ -97,44 +97,56 @@ QString RpnStackModel::formatValue(double v) const
         return s;
     };
 
-    // Pomocnicza funkcja do formatowania naukowego (używana w Scientific i jako fallback w Simple)
-    auto formatScientific = [&](double val, int precision) -> QString {
-        int exp = static_cast<int>(std::floor(std::log10(std::abs(val))));
-        double mant = val / std::pow(10.0, exp);
-        QString mantStr = cleanZerosLocale(loc.toString(mant, 'f', precision));
-        return QString("%1 * 10^%2").arg(mantStr).arg(exp);
-    };
-
     switch (m_mode) {
         case Scientific: {
-            return formatScientific(v, m_precision);
+            int exp = static_cast<int>(std::floor(std::log10(absV)));
+            double mant = v / std::pow(10.0, exp);
+
+            // [POPRAWKA] Scientific ma zawsze 1 cyfrę przed przecinkiem.
+            // Bezpieczny max po przecinku to 15 - 1 = 14.
+            int safePrec = qBound(0, m_precision, 14);
+
+            QString mantStr = cleanZerosLocale(loc.toString(mant, 'f', safePrec));
+            return QString("%1 * 10^%2").arg(mantStr).arg(exp);
         }
         case Engineering: {
             int exp = static_cast<int>(std::floor(std::log10(absV)));
-            exp = (exp / 3) * 3;
+            exp = (exp / 3) * 3; // Sprowadzamy wykładnik do wielokrotności 3
             double mant = v / std::pow(10.0, exp);
-            QString mantStr = cleanZerosLocale(loc.toString(mant, 'f', m_precision));
+
+            // [POPRAWKA] Obliczamy "budżet" cyfr dla mantysy
+            // Mantysa w trybie inżynierskim może być np. 1.2, 12.3 lub 123.4
+            double absMant = std::abs(mant);
+            int intDigits = 1;
+            if (absMant >= 100.0) intDigits = 3;
+            else if (absMant >= 10.0) intDigits = 2;
+
+            // Ile miejsc po przecinku możemy pokazać, nie przekraczając 15 cyfr znaczących?
+            // Max 15 - (cyfry całkowite). Np. dla "123.xxx" zostaje 12 miejsc.
+            int maxDecimals = 15 - intDigits;
+            int safePrec = qBound(0, m_precision, maxDecimals);
+
+            QString mantStr = cleanZerosLocale(loc.toString(mant, 'f', safePrec));
             return QString("%1 * 10^%2").arg(mantStr).arg(exp);
         }
         case Simple:
         default: {
-            // [POPRAWKA]
-            // Typ double ma precyzję ok. 15-16 cyfr znaczących.
-            // Jeśli liczba jest >= 1e15 (biliard), końcowe cyfry całkowite są "śmieciami".
-            // Wymuszamy wtedy notację naukową, aby ukryć błędy reprezentacji.
+            // [POPRAWKA] Jeśli liczba jest bardzo duża lub bardzo mała, wymuszamy notację naukową
             if (absV >= 1.0e15 || (absV > 0 && absV < 1.0e-15)) {
-                return formatScientific(v, 14); // 14 cyfr po przecinku to bezpieczny max
+                // Wywołujemy logikę Scientific ręcznie (żeby nie duplikować kodu, można by wydzielić funkcję,
+                // ale tutaj dla czytelności wklejam logikę Scientific)
+                int exp = static_cast<int>(std::floor(std::log10(absV)));
+                double mant = v / std::pow(10.0, exp);
+                int safePrec = 14; 
+                QString mantStr = cleanZerosLocale(loc.toString(mant, 'f', safePrec));
+                return QString("%1 * 10^%2").arg(mantStr).arg(exp);
             }
 
-            // Dla liczb mieszczących się w precyzji używamy normalnego zapisu 'f'
-            const int safePrecision = qBound(0, m_precision, 15);
-            QString s = loc.toString(v, 'f', safePrecision);
-
+            // Normalny tryb - max 15 cyfr
+            int safePrec = qBound(0, m_precision, 15);
+            QString s = loc.toString(v, 'f', safePrec);
             s = cleanZerosLocale(s);
-
-            if (s == QStringLiteral("-0"))
-                s = QStringLiteral("0");
-
+            if (s == QStringLiteral("-0")) s = QStringLiteral("0");
             return s;
         }
     }

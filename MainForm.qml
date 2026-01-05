@@ -13,14 +13,21 @@ Item {
     Component.onCompleted: forceActiveFocus()
 
     // ===== API =====
-    property var stackModel: null
-    property string historyText: ""
+    // Atrapa modelu dla Designera
+    property var stackModel: ListModel {
+        ListElement { value: "3.1415926" }
+        ListElement { value: "125.00" }
+    }
+    property string historyText: "3 Enter\n4 +\nResult: 7"
     property string decimalSeparator: "."
     property bool canUndo: false
     property bool canRedo: false
 
+    // NOWOŚĆ: Rozdzielenie surowego tekstu od wyświetlanego
     property string inputText: ""
     property string displayText: formatDisplayText(inputText)
+
+    // Alias wskazujący na root (bo to root obsługuje teraz klawisze)
     property alias inputItem: root
 
     property alias stackCurrentIndex: stackList.currentIndex
@@ -47,44 +54,43 @@ Item {
         return keypad.simulatePress(rawInput)
     }
 
+    // --- FUNKCJA FORMATUJĄCA (Grupowanie cyfr) ---
     function formatDisplayText(raw) {
         if (raw.trim() === "") return "";
-        let sep = Qt.locale().groupSeparator;
-        let dec = Qt.locale().decimalPoint;
-        let cleaned = raw.replace(/[^0-9.,\-]/g, '');  // Keep digits, decimal, comma, minus
+
+        let sep = Qt.locale().groupSeparator; // Np. spacja
+        let dec = Qt.locale().decimalPoint;   // Np. przecinek lub kropka
+
+        // Czyścimy wszystko co nie jest cyfrą, separatorem lub minusem
+        let cleaned = raw.replace(/[^0-9.,\-]/g, '');
+
         let parts = cleaned.split(dec);
-        if (parts.length > 2) return raw;  // Invalid if multiple decimals
+        // Jeśli jest więcej niż jeden separator dziesiętny, zwracamy oryginał (błąd)
+        if (parts.length > 2) return raw;
+
         let intPart = parts[0];
         let decPart = parts.length > 1 ? dec + parts[1] : '';
-        // Group integer part from the right
+
+        // Grupowanie części całkowitej (od prawej strony)
+        // Regex szuka 3 cyfr, przed którymi stoi inna cyfra
         let reversed = intPart.split('').reverse().join('');
         let grouped = reversed.replace(/(\d{3})(?=\d)/g, '$1' + sep);
         let finalInt = grouped.split('').reverse().join('');
+
         return finalInt + decPart;
     }
 
-    // ===== 1. OBSŁUGA KLAWISZY NA EKRANIE (ROOT) =====
+    // ===== OBSŁUGA KLAWISZY (GLOBALNA) =====
     Keys.onPressed: (event) => {
         if (isStackEditing) return;
 
-        // Shift + Strzałki (Przesuwanie stosu)
         if (event.modifiers & Qt.ShiftModifier) {
-            if (event.key === Qt.Key_Up) {
-                root.stackMoveRequest(-1); event.accepted = true; return
-            }
-            if (event.key === Qt.Key_Down) {
-                root.stackMoveRequest(1); event.accepted = true; return
-            }
+            if (event.key === Qt.Key_Up) { root.stackMoveRequest(-1); event.accepted = true; return }
+            if (event.key === Qt.Key_Down) { root.stackMoveRequest(1); event.accepted = true; return }
         }
 
-        // Strzałka w dół -> wejście na klawiaturę (tylko gdy jesteśmy na root)
-        if (event.key === Qt.Key_Down) {
-            keypad.focusFirst()
-            event.accepted = true
-            return
-        }
+        if (event.key === Qt.Key_Down) { keypad.focusFirst(); event.accepted = true; return }
 
-        // Pisanie i Enter
         let raw = event.text
         if (event.key === Qt.Key_Backspace) raw = "BACK"
         else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) raw = "ENTER"
@@ -101,7 +107,7 @@ Item {
     readonly property int stackMinH: 200
     readonly property int historyMinH: 140
 
-    // ===== Component: KeyButton =====
+    // ===== KeyButton Component =====
     component KeyButton: Button {
         id: btn
         property var key
@@ -110,68 +116,43 @@ Item {
         Layout.preferredHeight: 40
         Layout.minimumHeight: 20
         Layout.maximumHeight: 34
-        text: key.label
 
-        // UWAGA: Usunęliśmy Keys.forwardTo: [root], bo psuło nawigację strzałkami.
-        // Teraz przycisk sam decyduje co zrobić z klawiszem.
+        // Pobieramy separator z roota, jeśli label to DECIMAL
+        text: (key && key.label === "DECIMAL") ? root.decimalSeparator : ((key && key.label) ? key.label : "")
 
         Timer { id: releaseTimer; interval: 100; onTriggered: btn.down = false }
         function flash() { btn.down = true; releaseTimer.restart() }
 
         onClicked: {
             btn.flash()
-            root.keypadAction(key)
+            if (key.label === "DECIMAL") {
+                root.keypadAction({ label: root.decimalSeparator, type: key.type, value: root.decimalSeparator })
+            } else {
+                root.keypadAction(key)
+            }
         }
 
-        // ===== 2. OBSŁUGA KLAWISZY NA PRZYCISKACH =====
         Keys.onPressed: (event) => {
-            // A. Ignoruj klawisze nawigacyjne (niech system robi swoje - KeyNavigation)
-            if (event.key === Qt.Key_Up || event.key === Qt.Key_Down ||
-                event.key === Qt.Key_Left || event.key === Qt.Key_Right ||
-                event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
-                return; // Nie akceptujemy, więc system obsłuży zmianę focusu
-            }
+            if (event.key === Qt.Key_Up || event.key === Qt.Key_Down || event.key === Qt.Key_Left || event.key === Qt.Key_Right || event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) return;
 
-            // B. Shift + Strzałki (Obsługa stosu nawet z poziomu klawiatury)
             if (event.modifiers & Qt.ShiftModifier) {
-                if (event.key === Qt.Key_Up) {
-                    root.stackMoveRequest(-1); event.accepted = true; return
-                }
-                if (event.key === Qt.Key_Down) {
-                    root.stackMoveRequest(1); event.accepted = true; return
-                }
+                if (event.key === Qt.Key_Up) { root.stackMoveRequest(-1); event.accepted = true; return }
+                if (event.key === Qt.Key_Down) { root.stackMoveRequest(1); event.accepted = true; return }
             }
+            if (event.key === Qt.Key_Escape) { root.forceActiveFocus(); event.accepted = true; return }
+            if (event.key === Qt.Key_Space) { if (!event.isAutoRepeat) { btn.flash(); btn.clicked() }; event.accepted = true; return }
 
-            // C. Escape - wróć do ekranu głównego
-            if (event.key === Qt.Key_Escape) {
-                root.forceActiveFocus();
-                event.accepted = true;
-                return;
-            }
-
-            // D. Spacja - Ręczne mignięcie
-            if (event.key === Qt.Key_Space) {
-                if (!event.isAutoRepeat) { btn.flash(); root.keypadAction(key); }
-                event.accepted = true;
-                return;
-            }
-
-            // E. Pisanie (np. 'n', 'r', cyfry) - przekaż do symulatora
             let raw = event.text
             if (event.key === Qt.Key_Backspace) raw = "BACK"
             else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) raw = "ENTER"
 
-            // Próbujemy wykonać akcję przypisaną do litery
-            if (root.simulatePress(raw)) {
-                event.accepted = true;
-            }
+            if (root.simulatePress(raw)) event.accepted = true
         }
     }
 
     // ===== Layout =====
     ColumnLayout {
-        anchors.fill: parent
-        spacing: 10
+        anchors.fill: parent; spacing: 10
 
         // EKRAN LCD
         Rectangle {
@@ -179,15 +160,16 @@ Item {
             color: root.palette.base; radius: 8
             border.color: root.palette.mid; border.width: 1
             MouseArea { anchors.fill: parent; onClicked: root.forceActiveFocus() }
+
             Text {
                 id: displayLabel
                 anchors.fill: parent; anchors.margins: 10
+                // WAŻNE: Wyświetlamy sformatowany tekst
                 text: displayText
                 font.family: "Monospace"; font.pointSize: 20
                 horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter
                 color: root.palette.text; elide: Text.ElideLeft
             }
-
         }
 
         // Toolbar
@@ -207,7 +189,7 @@ Item {
             Layout.fillWidth: true; Layout.fillHeight: true; orientation: Qt.Vertical; clip: true
             handle: Rectangle { implicitHeight: root.splitHandleH; color: panes.palette.mid; opacity: 0.6; radius: 4 }
 
-            // Ratio logic...
+            // ... (Ratio Logic - skrócone dla czytelności) ...
             property real stackRatio: 0.70
             property bool applying: false
             function applyRatio() {
@@ -230,7 +212,7 @@ Item {
             Connections { target: stackFrame; function onHeightChanged() { sampleRatio.restart() } }
             Connections { target: historyFrame; function onHeightChanged() { sampleRatio.restart() } }
 
-            // Stack
+            // Stack Frame
             Frame {
                 id: stackFrame
                 padding: 0; SplitView.minimumHeight: root.stackMinH
@@ -253,6 +235,7 @@ Item {
                             onMovementStarted: { stackList.showStackBar = true; stackBarTimer.restart() }
                             onMovementEnded: stackBarTimer.restart()
                             ScrollBar.vertical: ScrollBar { id: stackVBar; policy: ScrollBar.AsNeeded; hoverEnabled: true; z: 100; width: 12; padding: 2; readonly property bool needed: stackList.contentHeight > stackList.height + 1; visible: needed; opacity: needed ? 1 : 0; Behavior on opacity { NumberAnimation { duration: 120 } } }
+
                             delegate: Item {
                                 id: rowItem
                                 width: stackList.width; height: stackList.rowHeight
@@ -269,8 +252,32 @@ Item {
                                 Text { id: idxText; anchors.left: parent.left; anchors.leftMargin: 12; anchors.verticalCenter: parent.verticalCenter; text: (index + 1).toString(); color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.text; font.family: "Monospace" }
                                 Rectangle { id: vSep; width: 1; anchors.left: idxText.right; anchors.leftMargin: 12; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.topMargin: 4; anchors.bottomMargin: 4; color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.mid; opacity: 0.5 }
                                 Text { id: valueText; anchors.left: vSep.right; anchors.leftMargin: 12; anchors.right: removeBtn.left; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter; text: model.value; visible: !rowItem.editing; color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.text; font.family: "Monospace"; elide: Text.ElideLeft }
+
+                                // Edycja na stosie
                                 TextField {
                                     id: editField; anchors.left: vSep.right; anchors.leftMargin: 12; anchors.right: removeBtn.left; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter; height: 30; visible: rowItem.editing; font.family: "Monospace"; selectByMouse: true; Keys.priority: Keys.BeforeItem
+
+                                    // ZABEZPIECZENIE: Limit 15 cyfr podczas edycji na stosie
+                                    onTextEdited: {
+                                        // Domyślnie sprawdzamy cały tekst
+                                        let contentToCheck = text
+
+                                        // Jeśli to notacja naukowa (zawiera * lub E), bierzemy tylko to co jest PRZED znakiem
+                                        // Dzięki temu cyfry z wykładnika (np. 10^12) nie blokują edycji mantysy
+                                        if (text.indexOf("*") >= 0) {
+                                            contentToCheck = text.split("*")[0]
+                                        } else if (text.toLowerCase().indexOf("e") >= 0) {
+                                            contentToCheck = text.toLowerCase().split("e")[0]
+                                        }
+
+                                        // Liczymy cyfry tylko w istotnej części
+                                        const digits = contentToCheck.replace(/[^0-9]/g, "").length
+
+                                        if (digits > 15) {
+                                            undo()
+                                            root.showToast("Maksymalna precyzja (15 cyfr)")
+                                        }
+                                    }
                                     function commit() { if (root.stackModel && root.stackModel.setValueAt(index, text)) { rowItem.editing = false; root.forceActiveFocus() } else { toast.show("Nieprawidłowa liczba"); forceActiveFocus(); selectAll() } }
                                     Keys.onReturnPressed: (e) => { commit(); e.accepted = true }
                                     Keys.onEnterPressed: (e) => { commit(); e.accepted = true }
@@ -281,6 +288,7 @@ Item {
                                 ToolButton { id: removeBtn; anchors.right: parent.right; anchors.rightMargin: 6 + (stackVBar.visible ? stackVBar.width : 0); anchors.verticalCenter: parent.verticalCenter; width: 34; height: 34; text: "✕"; onClicked: root.stackRemoveRequest(index) }
                             }
                         }
+                        // Arrows Panel
                         Rectangle {
                             id: arrowsPanel; Layout.preferredWidth: 48; Layout.fillHeight: true; color: stackFrame.palette.window
                             Rectangle { width: 1; anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; color: stackFrame.palette.mid }
@@ -294,7 +302,6 @@ Item {
                     }
                 }
             }
-
             // History
             Frame {
                 id: historyFrame; padding: 6; SplitView.minimumHeight: root.historyMinH; background: Rectangle { radius: root.cornerRadius; color: historyFrame.palette.window; border.color: historyFrame.palette.mid; border.width: 1 }
@@ -325,7 +332,7 @@ Item {
                 { label:"7", type:"char", value:"7" }, { label:"8", type:"char", value:"8" }, { label:"9", type:"char", value:"9" }, { label:"+", type:"op", value:"add" }, { label:"-", type:"op", value:"sub" },
                 { label:"4", type:"char", value:"4" }, { label:"5", type:"char", value:"5" }, { label:"6", type:"char", value:"6" }, { label:"×", type:"op", value:"mul" }, { label:"/", type:"op", value:"div" },
                 { label:"1", type:"char", value:"1" }, { label:"2", type:"char", value:"2" }, { label:"3", type:"char", value:"3" }, { label:"ˣ√ᵧ", type:"op", value:"root" }, { label:"xʸ", type:"op", value:"pow" },
-                { label:"0", type:"char", value:"0" }, { label: root.decimalSeparator, type: "char", value: root.decimalSeparator }, { label:"⌫", type:"back", value:"" }, { label:"±", type:"fn", value:"neg" }, { label:"dup", type:"fn", value:"dup" },
+                { label:"0", type:"char", value:"0" }, { label: "DECIMAL", type: "char", value: "DECIMAL" }, { label:"⌫", type:"back", value:"" }, { label:"±", type:"fn", value:"neg" }, { label:"dup", type:"fn", value:"dup" },
                 { label:"sin", type:"fn", value:"sin" }, { label:"cos", type:"fn", value:"cos" }, { label:"1/x", type:"fn", value:"inv" }, { label:"drop", type:"fn", value:"drop" }, { label:"ENTER", type:"enter", value:"" }
             ]
 
@@ -334,13 +341,12 @@ Item {
                 const lower = rawInput.toLowerCase ? rawInput.toLowerCase() : rawInput
                 if (rawInput === "BACK") targetLabel = "⌫"
                 else if (rawInput === "ENTER") targetLabel = "ENTER"
-                else if (rawInput === "." || rawInput === ",") targetLabel = root.decimalSeparator
+                else if (rawInput === "." || rawInput === ",") targetLabel = "DECIMAL"
                 else if (rawInput === "+") targetLabel = "+"
                 else if (rawInput === "-") targetLabel = "-"
                 else if (rawInput === "*" || rawInput === "×") targetLabel = "×"
                 else if (rawInput === "/") targetLabel = "/"
                 else if (rawInput === "^") targetLabel = "xʸ"
-
                 else if (lower === "n") targetLabel = "±"
                 else if (lower === "r") targetLabel = "ˣ√ᵧ"
                 else if (lower === "s") targetLabel = "sin"
@@ -348,7 +354,6 @@ Item {
                 else if (lower === "d") targetLabel = "dup"
                 else if (lower === "x") targetLabel = "drop"
                 else if (lower === "i") targetLabel = "1/x"
-
                 else if (!isNaN(parseInt(rawInput))) targetLabel = rawInput
 
                 for (let i = 0; i < keypadRep.count; i++) {
@@ -356,7 +361,11 @@ Item {
                     const data = keypad.keys[i]
                     if (data.label === targetLabel) {
                         btn.flash()
-                        root.keypadAction(data)
+                        if (data.label === "DECIMAL") {
+                            root.keypadAction({ label: root.decimalSeparator, type: data.type, value: root.decimalSeparator })
+                        } else {
+                            root.keypadAction(data)
+                        }
                         return true
                     }
                 }
@@ -380,12 +389,39 @@ Item {
 
     Popup {
         id: toast
+        // [NAPRAWA] Dodajemy brakującą właściwość "text"
         property string text: ""
-        x: (parent.width - width)/2; y: parent.height - height - 16
+
+        x: (parent.width - width)/2
+        y: parent.height - height - 16
         padding: 10
-        background: Rectangle { radius: 10; color: toast.palette.window; border.color: toast.palette.mid; border.width: 1; opacity: 0.95 }
-        contentItem: Text { text: toast.text; color: toast.palette.text; wrapMode: Text.Wrap; width: Math.min(parent.width * 0.9, 360) }
-        Timer { id: toastTimer; interval: 3000; repeat: false; onTriggered: toast.close() }
-        function show(msg) { toast.text = msg; toast.open(); toastTimer.restart() }
-    }
-}
+
+        background: Rectangle {
+            radius: 10
+            color: toast.palette.window
+            border.color: toast.palette.mid
+            border.width: 1
+            opacity: 0.95
+        }
+
+        contentItem: Text {
+            text: toast.text
+            color: toast.palette.text
+            wrapMode: Text.Wrap
+            horizontalAlignment: Text.AlignHCenter
+            width: Math.min(parent.width * 0.9, 360)
+        }
+
+        Timer {
+            id: toastTimer
+            interval: 3000
+            repeat: false
+            onTriggered: toast.close()
+        }
+
+        function show(msg) {
+            toast.text = msg;
+            toast.open();
+            toastTimer.restart()
+        }
+    }}

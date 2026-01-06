@@ -39,12 +39,12 @@ ApplicationWindow {
 
         onPushPi: rpn.pushPi()
         onPushE: rpn.pushE()
-        onUndoRequest: win.keepFocus(() => rpn.undo())
-        onRedoRequest: win.keepFocus(() => rpn.redo())
+        onUndoRequest: rpn.undo()
+        onRedoRequest: rpn.redo()
+
         onClearAllRequest: {
             ui.inputText = ""
             rpn.clearAll()
-            ui.forceInputFocus()
         }
         onClearHistoryRequest: rpn.clearHistory()
         stackChangeCallback: (row, text) => rpn.modifyStackValue(row, text)
@@ -54,7 +54,6 @@ ApplicationWindow {
     function keepFocus(doWork) {
         const prev = win.activeFocusItem;
         doWork();
-        // Jeśli focus uciekł (ale nie do pola edycji), przywracamy go
         if (prev && prev !== ui.inputItem && win.activeFocusItem === ui.inputItem) {
             prev.forceActiveFocus();
         }
@@ -72,7 +71,6 @@ ApplicationWindow {
 
     function appendChar(s) {
         keepFocus(() => {
-            // [ZABEZPIECZENIE] Blokada wpisywania powyżej 15 cyfr
             const isDigit = (s >= '0' && s <= '9');
             if (isDigit) {
                 const currentDigits = ui.inputText.replace(/[^0-9]/g, "").length;
@@ -135,7 +133,6 @@ ApplicationWindow {
         if (ui.stackCount === 0) ui.stackCurrentIndex = -1
         else if (cur >= row) ui.stackCurrentIndex = Math.max(0, cur - 1)
         ui.ensureStackVisible(ui.stackCurrentIndex)
-        ui.forceInputFocus()
     }
 
     function moveSelectedStack(delta) {
@@ -154,9 +151,12 @@ ApplicationWindow {
         Native.Menu {
             title: "Notation"
             Native.MenuItemGroup { id: fmtGroup; exclusive: true }
-            Native.MenuItem { text: "Scientific";  checkable: true; checked: rpn.formatMode === 0; group: fmtGroup; onTriggered: rpn.formatMode = 0 }
-            Native.MenuItem { text: "Engineering"; checkable: true; checked: rpn.formatMode === 1; group: fmtGroup; onTriggered: rpn.formatMode = 1 }
-            Native.MenuItem { text: "Simple";      checkable: true; checked: rpn.formatMode === 2; group: fmtGroup; onTriggered: rpn.formatMode = 2 }
+            Native.MenuItem { text: "Scientific";  checkable: true; checked: rpn.formatMode === 0; group: fmtGroup;
+                onTriggered: rpn.formatMode = 0 }
+            Native.MenuItem { text: "Engineering"; checkable: true; checked: rpn.formatMode === 1; group: fmtGroup;
+                onTriggered: rpn.formatMode = 1 }
+            Native.MenuItem { text: "Simple";      checkable: true; checked: rpn.formatMode === 2; group: fmtGroup;
+                onTriggered: rpn.formatMode = 2 }
         }
         Native.Menu {
             title: "History"
@@ -169,8 +169,10 @@ ApplicationWindow {
         }
         Native.Menu {
             title: "Help"
-            Native.MenuItem { text: "Open GitHub Repository"; onTriggered: Qt.openUrlExternally("https://github.com/marek2001/RpnCalcQuick/") }
-            Native.MenuItem { text: "Instructions"; onTriggered: Qt.openUrlExternally("https://github.com/marek2001/RpnCalcQuick/#readme") }
+            Native.MenuItem { text: "Open GitHub Repository";
+                onTriggered: Qt.openUrlExternally("https://github.com/marek2001/RpnCalcQuick/") }
+            Native.MenuItem { text: "Instructions";
+                onTriggered: Qt.openUrlExternally("https://github.com/marek2001/RpnCalcQuick/#readme") }
             Native.MenuSeparator { }
             Native.MenuItem { text: "About"; onTriggered: aboutDialog.open() }
         }
@@ -185,32 +187,101 @@ ApplicationWindow {
 
     readonly property bool allowGlobalTyping: !ui.isStackEditing
 
-    // Skróty
-    Shortcut { sequence: "Shift+Up";   context: Qt.ApplicationShortcut; enabled: !ui.isStackEditing && ui.stackCurrentIndex > 0; onActivated: win.moveSelectedStack(-1) }
-    Shortcut { sequence: "Shift+Down"; context: Qt.ApplicationShortcut; enabled: !ui.isStackEditing && ui.stackCurrentIndex >= 0 && ui.stackCurrentIndex < ui.stackCount - 1; onActivated: win.moveSelectedStack(+1) }
+    // --- GLOBALNE SKRÓTY KLAWISZOWE ---
 
-    Shortcut { sequences: [ "Return", "Enter", StandardKey.InsertParagraphSeparator]; enabled: !ui.isStackEditing && !ui.inputItem.activeFocus; onActivated: ui.simulatePress("ENTER") }
-    Shortcut { sequence: "Backspace"; enabled: win.allowGlobalTyping && !ui.inputItem.activeFocus; onActivated: ui.simulatePress("BACK") }
-    Repeater { model: 10; delegate: Item { visible: false; Shortcut { sequence: modelData.toString(); context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping && !ui.inputItem.activeFocus; onActivated: ui.simulatePress(modelData.toString()) } } }
-    Item { visible: false; Shortcut { sequence: "."; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping && !ui.inputItem.activeFocus; onActivated: ui.simulatePress(".") } }
-    Item { visible: false; Shortcut { sequence: ","; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping && !ui.inputItem.activeFocus; onActivated: ui.simulatePress(",") } }
+    // 1. Nawigacja stosem
+    Shortcut { sequence: "Shift+Up";   context: Qt.ApplicationShortcut;
+        enabled: !ui.isStackEditing && ui.stackCurrentIndex > 0; onActivated: win.moveSelectedStack(-1) }
+    Shortcut { sequence: "Shift+Down"; context: Qt.ApplicationShortcut;
+        enabled: !ui.isStackEditing && ui.stackCurrentIndex >= 0 && ui.stackCurrentIndex < ui.stackCount - 1;
+        onActivated: win.moveSelectedStack(+1) }
 
-    Shortcut { sequence: StandardKey.Undo; onActivated: rpn.undo() }
-    Shortcut { sequence: StandardKey.Redo; onActivated: rpn.redo() }
-    Shortcut { sequence: "+"; onActivated: ui.simulatePress("+") }
-    Shortcut { sequence: "-"; onActivated: ui.simulatePress("-") }
-    Shortcut { sequence: "*"; onActivated: ui.simulatePress("*") }
-    Shortcut { sequence: "/"; onActivated: ui.simulatePress("/") }
-    Shortcut { sequence: "^"; onActivated: ui.simulatePress("^") }
-    Shortcut { sequence: "Multiply"; onActivated: ui.simulatePress("*") }
-    Shortcut { sequence: "Divide";   onActivated: ui.simulatePress("/") }
-    Shortcut { sequence: "Add";      onActivated: ui.simulatePress("+") }
-    Shortcut { sequence: "Subtract"; onActivated: ui.simulatePress("-") }
-    Shortcut { sequence: "S"; onActivated: ui.simulatePress("sin") }
-    Shortcut { sequence: "C"; onActivated: ui.simulatePress("cos") }
-    Shortcut { sequence: "N"; onActivated: ui.simulatePress("neg") }
-    Shortcut { sequence: "D"; onActivated: ui.simulatePress("dup") }
-    Shortcut { sequence: "X"; onActivated: ui.simulatePress("drop") }
-    Shortcut { sequence: "R"; onActivated: ui.simulatePress("root") }
-    Shortcut { sequence: "I"; onActivated: ui.simulatePress("inv") }
+    // 2. ENTER
+    Shortcut {
+        sequence: StandardKey.Return // Enter na głównej klawiaturze
+        context: Qt.ApplicationShortcut
+        enabled: !ui.isStackEditing
+        onActivated: ui.simulatePress("ENTER")
+    }
+    Shortcut {
+        sequence: StandardKey.Enter // Enter na klawiaturze numerycznej
+        context: Qt.ApplicationShortcut
+        enabled: !ui.isStackEditing
+        onActivated: ui.simulatePress("ENTER")
+    }
+
+    // 3. Backspace
+    Shortcut {
+        sequence: "Backspace"
+        context: Qt.ApplicationShortcut
+        enabled: win.allowGlobalTyping
+        onActivated: ui.simulatePress("BACK")
+    }
+
+    // 4. Cyfry 0-9
+    Repeater {
+        model: 10
+        delegate: Item {
+            visible: false
+            Shortcut {
+                sequence: modelData.toString()
+                context: Qt.ApplicationShortcut
+                enabled: win.allowGlobalTyping
+                onActivated: ui.simulatePress(modelData.toString())
+            }
+        }
+    }
+
+    // 5. Separatory dziesiętne
+    Shortcut { sequence: "."; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
+        onActivated: ui.simulatePress(".") }
+    Shortcut { sequence: ","; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
+        onActivated: ui.simulatePress(",") }
+
+    // 6. Undo / Redo
+    Shortcut { sequence: StandardKey.Undo; context: Qt.ApplicationShortcut; onActivated: rpn.undo() }
+    Shortcut { sequence: StandardKey.Redo; context: Qt.ApplicationShortcut; onActivated: rpn.redo() }
+
+    // 7. Operatory (+, -, *, /)
+    // UWAGA: "=" działa jako plus (dla wygody na klawiaturze bez numpada)
+    Shortcut { sequence: "="; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
+        onActivated: ui.simulatePress("+") }
+    Shortcut { sequence: "+"; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
+        onActivated: ui.simulatePress("+") }
+
+    Shortcut { sequence: "-"; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
+        onActivated: ui.simulatePress("-") }
+    Shortcut { sequence: "*"; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
+        onActivated: ui.simulatePress("*") }
+    Shortcut { sequence: "/"; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
+        onActivated: ui.simulatePress("/") }
+    Shortcut { sequence: "^"; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
+        onActivated: ui.simulatePress("^") }
+
+    // Numpad words
+    Shortcut { sequence: "Multiply"; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
+        onActivated: ui.simulatePress("*") }
+    Shortcut { sequence: "Divide";   context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
+        onActivated: ui.simulatePress("/") }
+    Shortcut { sequence: "Add";      context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
+        onActivated: ui.simulatePress("+") }
+    Shortcut { sequence: "Subtract"; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
+        onActivated: ui.simulatePress("-") }
+
+    // 8. Litery / Funkcje (Poprawione: Małe litery + wysyłanie znaku, nie nazwy funkcji)
+    // Dzięki wysyłaniu "s" (a nie "sin"), MainForm poprawnie mapuje klawisz na przycisk.
+    Shortcut { sequence: "s"; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
+        onActivated: ui.simulatePress("s") }
+    Shortcut { sequence: "c"; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
+        onActivated: ui.simulatePress("c") }
+    Shortcut { sequence: "n"; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
+        onActivated: ui.simulatePress("n") }
+    Shortcut { sequence: "d"; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
+        onActivated: ui.simulatePress("d") }
+    Shortcut { sequence: "x"; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
+        onActivated: ui.simulatePress("x") }
+    Shortcut { sequence: "r"; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
+        onActivated: ui.simulatePress("r") }
+    Shortcut { sequence: "i"; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
+        onActivated: ui.simulatePress("i") }
 }

@@ -155,7 +155,7 @@ void RpnEngine::root()
     }
 
     m_model.push(result);
-    appendHistoryLine(QString("%2 root %1 -> %3").arg(base).arg(degree).arg(topAsString()));
+    appendHistoryLine(QString("%2 %1 root -> %3").arg(base).arg(degree).arg(topAsString()));
 }
 
 void RpnEngine::sin()
@@ -244,6 +244,44 @@ void RpnEngine::pushE()
     appendHistoryLine(QString("push e -> %1").arg(topAsString()));
 }
 
+bool RpnEngine::modifyStackValue(int row, const QString &text)
+{
+    // 1. Pobieramy STARĄ wartość (old value)
+    QModelIndex idx = m_model.index(row);
+    QString oldValue = m_model.data(idx, RpnStackModel::ValueRole).toString();
+
+    // 2. Zapisujemy stan Undo
+    saveState();
+
+    // 3. Próbujemy zmienić wartość
+    bool success = m_model.setValueAt(row, text);
+
+    if (success) {
+        // --- SUKCES ---
+        
+        // Czyścimy Redo
+        m_redoStack.clear();
+        emit canUndoChanged();
+        emit canRedoChanged();
+
+        // 4. Pobieramy NOWĄ wartość (new value)
+        QString newValue = m_model.data(idx, RpnStackModel::ValueRole).toString();
+
+        // 5. Używamy tej samej funkcji co reszta operacji (appendHistoryLine)
+        // Dzięki temu wpis trafi na GÓRĘ listy (Top of the list)
+        appendHistoryLine(QStringLiteral("%1 edit -> %2").arg(oldValue, newValue));
+
+    } else {
+        // --- BŁĄD ---
+        // Cofamy zapisanie stanu
+        if (!m_undoStack.isEmpty()) {
+            m_undoStack.pop_back(); 
+        }
+    }
+
+    return success;
+}
+
 // --- STATE & SETTINGS ---
 
 void RpnEngine::setFormatMode(int mode)
@@ -329,42 +367,4 @@ void RpnEngine::loadSessionState()
 
     m_historyText = s.value("session/historyText", "").toString();
     emit historyTextChanged();
-}
-
-bool RpnEngine::modifyStackValue(int row, const QString &text)
-{
-    // 1. Pobieramy STARĄ wartość (old value)
-    QModelIndex idx = m_model.index(row);
-    QString oldValue = m_model.data(idx, RpnStackModel::ValueRole).toString();
-
-    // 2. Zapisujemy stan Undo
-    saveState();
-
-    // 3. Próbujemy zmienić wartość
-    bool success = m_model.setValueAt(row, text);
-
-    if (success) {
-        // --- SUKCES ---
-        
-        // Czyścimy Redo
-        m_redoStack.clear();
-        emit canUndoChanged();
-        emit canRedoChanged();
-
-        // 4. Pobieramy NOWĄ wartość (new value)
-        QString newValue = m_model.data(idx, RpnStackModel::ValueRole).toString();
-
-        // 5. Używamy tej samej funkcji co reszta operacji (appendHistoryLine)
-        // Dzięki temu wpis trafi na GÓRĘ listy (Top of the list)
-        appendHistoryLine(QStringLiteral("Edit: %1 -> %2").arg(oldValue, newValue));
-
-    } else {
-        // --- BŁĄD ---
-        // Cofamy zapisanie stanu
-        if (!m_undoStack.isEmpty()) {
-            m_undoStack.pop_back(); 
-        }
-    }
-
-    return success;
 }

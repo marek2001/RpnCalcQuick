@@ -268,36 +268,53 @@ Item {
 
                                 // Edycja na stosie
                                 TextField {
-                                    id: editField; anchors.left: vSep.right; anchors.leftMargin: 12; anchors.right: removeBtn.left; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter; height: 30; visible: rowItem.editing; font.family: "Monospace"; selectByMouse: true; Keys.priority: Keys.BeforeItem
+                                    id: editField
+                                    anchors.left: vSep.right; anchors.leftMargin: 12
+                                    anchors.right: removeBtn.left; anchors.rightMargin: 12
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    height: 30
+                                    visible: rowItem.editing
+                                    font.family: "Monospace"
+                                    selectByMouse: true
+                                    Keys.priority: Keys.BeforeItem
 
-                                    // ZABEZPIECZENIE: Limit 15 cyfr podczas edycji na stosie
+                                    // [NOWOŚĆ] Zmienna do śledzenia poprzedniej długości
+                                    property string previousText: ""
+
                                     onTextEdited: {
-                                        // Domyślnie sprawdzamy cały tekst
+                                        // 1. Jeśli tekst jest KRÓTSZY niż wcześniej (user kasuje), ZAWSZE pozwalamy.
+                                        // Dzięki temu można skrócić wynik z 17 cyfr do 15 i dopiero edytować.
+                                        if (text.length < previousText.length) {
+                                            previousText = text
+                                            return
+                                        }
+
+                                        // 2. Jeśli tekst się wydłużył lub zmienił bez zmiany długości, sprawdzamy limit.
                                         let contentToCheck = text
 
-                                        // Jeśli to notacja naukowa (zawiera * lub E), bierzemy tylko to co jest PRZED znakiem
-                                        // Dzięki temu cyfry z wykładnika (np. 10^12) nie blokują edycji mantysy
+                                        // Logika dla notacji naukowej (ignorujemy wykładnik)
                                         if (text.indexOf("*") >= 0) {
                                             contentToCheck = text.split("*")[0]
                                         } else if (text.toLowerCase().indexOf("e") >= 0) {
                                             contentToCheck = text.toLowerCase().split("e")[0]
                                         }
 
-                                        // Liczymy cyfry tylko w istotnej części
                                         const digits = contentToCheck.replace(/[^0-9]/g, "").length
 
                                         if (digits > 15) {
                                             undo()
                                             root.showToast("Maksymalna precyzja (15 cyfr)")
+                                        } else {
+                                            // Akceptujemy zmianę
+                                            previousText = text
                                         }
                                     }
+
                                     function commit() {
                                         let success = false
-                                        
                                         if (root.stackChangeCallback) {
                                             success = root.stackChangeCallback(index, text)
                                         } else if (root.stackModel) {
-                                            // Fallback do starej metody (bez historii)
                                             success = root.stackModel.setValueAt(index, text)
                                         }
 
@@ -310,12 +327,12 @@ Item {
                                             selectAll()
                                         }
                                     }
+
                                     Keys.onReturnPressed: (e) => { commit(); e.accepted = true }
                                     Keys.onEnterPressed: (e) => { commit(); e.accepted = true }
                                     Keys.onEscapePressed: (e) => { rowItem.editing = false; root.forceActiveFocus(); e.accepted = true }
                                     onEditingFinished: { if (rowItem.editing) commit() }
-                                }
-                                MouseArea { anchors.fill: parent; visible: rowItem.editing; z: 999; onClicked: editField.commit() }
+                                }                                MouseArea { anchors.fill: parent; visible: rowItem.editing; z: 999; onClicked: editField.commit() }
                                 ToolButton { id: removeBtn; anchors.right: parent.right; anchors.rightMargin: 6 + (stackVBar.visible ? stackVBar.width : 0); anchors.verticalCenter: parent.verticalCenter; width: 34; height: 34; text: "✕"; onClicked: root.stackRemoveRequest(index) }
                             }
                         }

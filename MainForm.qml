@@ -23,6 +23,7 @@ Item {
     property bool canUndo: false
     property bool canRedo: false
 
+    property var stackChangeCallback: null
     // NOWOŚĆ: Rozdzielenie surowego tekstu od wyświetlanego
     property string inputText: ""
     property string displayText: formatDisplayText(inputText)
@@ -290,7 +291,25 @@ Item {
                                             root.showToast("Maksymalna precyzja (15 cyfr)")
                                         }
                                     }
-                                    function commit() { if (root.stackModel && root.stackModel.setValueAt(index, text)) { rowItem.editing = false; root.forceActiveFocus() } else { toast.show("Nieprawidłowa liczba"); forceActiveFocus(); selectAll() } }
+                                    function commit() {
+                                        let success = false
+                                        
+                                        if (root.stackChangeCallback) {
+                                            success = root.stackChangeCallback(index, text)
+                                        } else if (root.stackModel) {
+                                            // Fallback do starej metody (bez historii)
+                                            success = root.stackModel.setValueAt(index, text)
+                                        }
+
+                                        if (success) {
+                                            rowItem.editing = false
+                                            root.forceActiveFocus()
+                                        } else {
+                                            toast.show("Nieprawidłowa liczba")
+                                            forceActiveFocus()
+                                            selectAll()
+                                        }
+                                    }
                                     Keys.onReturnPressed: (e) => { commit(); e.accepted = true }
                                     Keys.onEnterPressed: (e) => { commit(); e.accepted = true }
                                     Keys.onEscapePressed: (e) => { rowItem.editing = false; root.forceActiveFocus(); e.accepted = true }

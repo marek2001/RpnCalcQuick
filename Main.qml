@@ -47,11 +47,10 @@ ApplicationWindow {
             ui.forceInputFocus()
         }
         onClearHistoryRequest: rpn.clearHistory()
+        stackChangeCallback: (row, text) => rpn.modifyStackValue(row, text)
     }
 
     // --- LOGIC ---
-
-    // [NAPRAWA] Brakująca funkcja keepFocus
     function keepFocus(doWork) {
         const prev = win.activeFocusItem;
         doWork();

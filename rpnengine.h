@@ -65,6 +65,8 @@ public:
 
     QString decimalSeparator() const { return QLocale::system().decimalPoint(); }
 
+    Q_INVOKABLE bool modifyStackValue(int row, const QString &text);
+
 signals:
     void errorOccurred(const QString &message);
     void formatModeChanged();

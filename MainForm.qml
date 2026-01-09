@@ -111,18 +111,20 @@ Item {
     // ===== Style =====
     readonly property int cornerRadius: 12
     readonly property int splitHandleH: 8
-    readonly property int stackMinH: 200
-    readonly property int historyMinH: 140
+    readonly property int stackMinH: 100
+    readonly property int historyMinH: 80  
 
     // ===== KeyButton Component =====
     component KeyButton: Button {
         id: btn
         property var key
         focusPolicy: Qt.StrongFocus
+        Layout.preferredHeight: 34
         Layout.fillWidth: true
-        Layout.preferredHeight: 40
         Layout.minimumHeight: 20
         Layout.maximumHeight: 34
+        Layout.minimumWidth: 55
+        Layout.preferredWidth: 55
 
         // Pobieramy separator z roota, jeśli label to DECIMAL
         text: (key && key.label === "DECIMAL") ? root.decimalSeparator : ((key && key.label) ? key.label : "")
@@ -159,7 +161,7 @@ Item {
 
     // ===== Layout =====
     ColumnLayout {
-        anchors.fill: parent; spacing: 10
+        anchors.fill: parent; spacing: 2
 
         // EKRAN LCD
         Rectangle {
@@ -181,13 +183,13 @@ Item {
 
         // Toolbar
         RowLayout {
-            Layout.fillWidth: true; spacing: 8
-            Button { text: "π"; onClicked: root.pushPi() }
-            Button { text: "e"; onClicked: root.pushE() }
-            Button { text: "↶"; enabled: root.canUndo; onClicked: root.undoRequest() }
-            Button { text: "↷"; enabled: root.canRedo; onClicked: root.redoRequest() }
-            Item { Layout.fillWidth: true }
-            Button { text: "CLR"; onClicked: root.clearAllRequest() }
+            Layout.fillWidth: true
+            Layout.minimumWidth: 55; spacing: 2
+            Button { text: "π"; Layout.fillWidth: true; onClicked: root.pushPi() }
+            Button { text: "e"; Layout.fillWidth: true; onClicked: root.pushE() }
+            Button { text: "↶"; Layout.fillWidth: true; enabled: root.canUndo; onClicked: root.undoRequest() }
+            Button { text: "↷"; Layout.fillWidth: true; enabled: root.canRedo; onClicked: root.redoRequest() }
+            Button { text: "CLR"; Layout.fillWidth: true; onClicked: root.clearAllRequest() }
         }
 
         // SplitView

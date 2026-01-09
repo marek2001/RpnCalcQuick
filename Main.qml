@@ -6,11 +6,14 @@ import QtQml
 
 ApplicationWindow {
     id: win
-    width: 500; height: 720
+    width: 360;
+    height: 620
     visible: true
     title: "RPN Calculator"
-    minimumWidth: 500; minimumHeight: 640
-    maximumWidth: 800; maximumHeight: 1200
+    minimumWidth: 320
+    minimumHeight: 540
+    maximumWidth: 800
+    maximumHeight: 1200
 
     RpnEngine {
         id: rpn

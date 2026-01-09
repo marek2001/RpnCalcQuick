@@ -368,3 +368,11 @@ void RpnEngine::loadSessionState()
     m_historyText = s.value("session/historyText", "").toString();
     emit historyTextChanged();
 }
+
+bool RpnEngine::isKde() const
+{
+    // Pobieramy zmienną środowiskową Linuxa
+    QByteArray desktop = qgetenv("XDG_CURRENT_DESKTOP");
+    // Sprawdzamy czy zawiera "KDE" (np. "KDE", "Ubuntu:KDE", "KDE Plasma")
+    return desktop.contains("KDE");
+}

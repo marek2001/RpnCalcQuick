@@ -22,7 +22,84 @@ ApplicationWindow {
 
     Component.onCompleted: rpn.loadSessionState()
     onClosing: rpn.saveSessionState()
+    // =========================================================
+    // MENU LOGIC: KDE vs OTHERS
+    // =========================================================
 
+    // 1. Jeśli NIE jesteśmy na KDE, przypisujemy pasek wbudowany do okna.
+    // Jeśli jesteśmy na KDE, ustawiamy null (brak paska w oknie).
+    menuBar: !rpn.isKde ? inWindowMenuBar : null
+
+    // Definicja paska wbudowanego (QQC2 - dla Cinnamon, GNOME etc.)
+    MenuBar {
+        id: inWindowMenuBar
+        Menu {
+            title: "Notation"
+            ActionGroup { id: fmtGroupQQC }
+            Action { text: "Scientific";  checkable: true; checked: rpn.formatMode === 0;
+                ActionGroup.group: fmtGroupQQC; onTriggered: rpn.formatMode = 0 }
+            Action { text: "Engineering"; checkable: true; checked: rpn.formatMode === 1;
+                ActionGroup.group: fmtGroupQQC; onTriggered: rpn.formatMode = 1 }
+            Action { text: "Simple";      checkable: true; checked: rpn.formatMode === 2;
+                ActionGroup.group: fmtGroupQQC; onTriggered: rpn.formatMode = 2 }
+        }
+        Menu {
+            title: "History"
+            Action { text: "Clear history"; onTriggered: rpn.clearHistory() }
+        }
+        Menu {
+            title: "Edit"
+            Action { text: "Undo"; shortcut: "Ctrl+Z"; enabled: rpn.canUndo; onTriggered: rpn.undo() }
+            Action { text: "Redo"; shortcut: "Ctrl+Shift+Z"; enabled: rpn.canRedo; onTriggered: rpn.redo() }
+        }
+        Menu {
+            title: "Help"
+            Action { text: "Open GitHub Repository";
+                onTriggered: Qt.openUrlExternally("https://github.com/marek2001/RpnCalcQuick/") }
+            Action { text: "Instructions";
+                onTriggered: Qt.openUrlExternally("https://github.com/marek2001/RpnCalcQuick/#readme") }
+            MenuSeparator { }
+            Action { text: "About"; onTriggered: aboutDialog.open() }
+        }
+    }
+
+    // 2. Jeśli JESTEŚMY na KDE, ładujemy natywny pasek (Global Menu).
+    // Używamy Loadera, żeby nie tworzyć go na innych systemach (unikając błędów).
+    Loader {
+        active: rpn.isKde
+        sourceComponent: Native.MenuBar {
+            Native.Menu {
+                title: "Notation"
+                Native.MenuItemGroup { id: fmtGroupNative; exclusive: true }
+                Native.MenuItem { text: "Scientific";  checkable: true; checked: rpn.formatMode === 0;
+                    group: fmtGroupNative; onTriggered: rpn.formatMode = 0 }
+                Native.MenuItem { text: "Engineering"; checkable: true; checked: rpn.formatMode === 1;
+                    group: fmtGroupNative; onTriggered: rpn.formatMode = 1 }
+                Native.MenuItem { text: "Simple";      checkable: true; checked: rpn.formatMode === 2;
+                    group: fmtGroupNative; onTriggered: rpn.formatMode = 2 }
+            }
+            Native.Menu {
+                title: "History"
+                Native.MenuItem { text: "Clear history"; onTriggered: rpn.clearHistory() }
+            }
+            Native.Menu {
+                title: "Edit"
+                Native.MenuItem { text: "Undo"; shortcut: "Ctrl+Z"; enabled: rpn.canUndo; onTriggered: rpn.undo() }
+                Native.MenuItem { text: "Redo"; shortcut: "Ctrl+Shift+Z"; enabled: rpn.canRedo; onTriggered: rpn.redo() }
+            }
+            Native.Menu {
+                title: "Help"
+                Native.MenuItem { text: "Open GitHub Repository";
+                    onTriggered: Qt.openUrlExternally("https://github.com/marek2001/RpnCalcQuick/") }
+                Native.MenuItem { text: "Instructions";
+                    onTriggered: Qt.openUrlExternally("https://github.com/marek2001/RpnCalcQuick/#readme") }
+                Native.MenuSeparator { }
+                Native.MenuItem { text: "About"; onTriggered: aboutDialog.open() }
+            }
+        }
+    }
+
+    // =========================================================
     MainForm {
         id: ui
         anchors.fill: parent

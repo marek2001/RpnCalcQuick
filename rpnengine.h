@@ -17,6 +17,7 @@ class RpnEngine : public QObject
     Q_PROPERTY(bool canUndo READ canUndo NOTIFY canUndoChanged)
     Q_PROPERTY(bool canRedo READ canRedo NOTIFY canRedoChanged)
     Q_PROPERTY(QString decimalSeparator READ decimalSeparator CONSTANT)
+    Q_PROPERTY(bool isKde READ isKde CONSTANT)
     
     int formatMode() const { return m_formatMode; }
     int precision() const { return m_precision; }
@@ -27,6 +28,7 @@ public:
 
     RpnStackModel* stackModel() { return &m_model; }
     RpnHistoryModel* historyModel() { return &m_history; }
+    bool isKde() const;
 
     Q_INVOKABLE bool enter(const QString &text);
 

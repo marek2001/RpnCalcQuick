@@ -4,7 +4,7 @@ RpnCalcQuick is a modern Reverse Polish Notation (RPN) calculator built with **C
 
 Designed to be lightweight and keyboard-friendly, it fits perfectly on your desktop alongside other windows.
 
-![Zrzut ekranu RpnCalcQuick](images/screenshot.png)
+![Zrzut ekranu RpnCalcQuick](images/screenshot.png) ![Zrzut ekranu RpnCalcQuick](images/screenshot2.png)
 
 ## Features
 

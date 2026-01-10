@@ -27,8 +27,9 @@ ApplicationWindow {
     // =========================================================
 
     // 1. Jeśli NIE jesteśmy na KDE, przypisujemy pasek wbudowany do okna.
-    // Jeśli jesteśmy na KDE, ustawiamy null (brak paska w oknie).
-    menuBar: !rpn.isKde ? inWindowMenuBar : null
+    // Jeśli to nie KDE i nie Windows -> użyj paska wbudowanego (QQC2)
+    // W przeciwnym razie (KDE lub Windows) -> null (bo użyjemy Native)
+    menuBar: (!rpn.isKde && Qt.platform.os !== "windows") ? inWindowMenuBar : null
 
     // Definicja paska wbudowanego (QQC2 - dla Cinnamon, GNOME etc.)
     MenuBar {
@@ -66,7 +67,7 @@ ApplicationWindow {
     // 2. Jeśli JESTEŚMY na KDE, ładujemy natywny pasek (Global Menu).
     // Używamy Loadera, żeby nie tworzyć go na innych systemach (unikając błędów).
     Loader {
-        active: rpn.isKde
+        active: rpn.isKde || Qt.platform.os === "windows"
         sourceComponent: Native.MenuBar {
             Native.Menu {
                 title: "Notation"
@@ -97,6 +98,13 @@ ApplicationWindow {
                 Native.MenuItem { text: "About"; onTriggered: aboutDialog.open() }
             }
         }
+    }
+
+    Native.MessageDialog {
+        id: aboutDialog
+        title: "About RPN Calculator"
+        text: "RPN Calculator (Qt Quick)\nBuilt with Qt Quick Controls."
+        buttons: Native.MessageDialog.Ok
     }
 
     // =========================================================
@@ -225,46 +233,7 @@ ApplicationWindow {
         }
         ui.ensureStackVisible(ui.stackCurrentIndex)
     }
-
-    // --- MENU ---
-    Native.MenuBar {
-        Native.Menu {
-            title: "Notation"
-            Native.MenuItemGroup { id: fmtGroup; exclusive: true }
-            Native.MenuItem { text: "Scientific";  checkable: true; checked: rpn.formatMode === 0; group: fmtGroup;
-                onTriggered: rpn.formatMode = 0 }
-            Native.MenuItem { text: "Engineering"; checkable: true; checked: rpn.formatMode === 1; group: fmtGroup;
-                onTriggered: rpn.formatMode = 1 }
-            Native.MenuItem { text: "Simple";      checkable: true; checked: rpn.formatMode === 2; group: fmtGroup;
-                onTriggered: rpn.formatMode = 2 }
-        }
-        Native.Menu {
-            title: "History"
-            Native.MenuItem { text: "Clear history"; onTriggered: rpn.clearHistory() }
-        }
-        Native.Menu {
-            title: "Edit"
-            Native.MenuItem { text: "Undo"; shortcut: "Ctrl+Z"; enabled: rpn.canUndo; onTriggered: rpn.undo() }
-            Native.MenuItem { text: "Redo"; shortcut: "Ctrl+Shift+Z"; enabled: rpn.canRedo; onTriggered: rpn.redo() }
-        }
-        Native.Menu {
-            title: "Help"
-            Native.MenuItem { text: "Open GitHub Repository";
-                onTriggered: Qt.openUrlExternally("https://github.com/marek2001/RpnCalcQuick/") }
-            Native.MenuItem { text: "Instructions";
-                onTriggered: Qt.openUrlExternally("https://github.com/marek2001/RpnCalcQuick/#readme") }
-            Native.MenuSeparator { }
-            Native.MenuItem { text: "About"; onTriggered: aboutDialog.open() }
-        }
-    }
-
-    Native.MessageDialog {
-        id: aboutDialog
-        title: "About RPN Calculator"
-        text: "RPN Calculator (Qt Quick)\nBuilt with Qt Quick Controls."
-        buttons: Native.MessageDialog.Ok
-    }
-
+    
     readonly property bool allowGlobalTyping: !ui.isStackEditing
 
     // --- GLOBALNE SKRÓTY KLAWISZOWE ---

@@ -109,8 +109,6 @@ jobs:
           QMAKE: /usr/bin/qmake6
           QML_SOURCES_PATHS: ${{ github.workspace }}
           EXTRA_PLATFORM_PLUGINS: libqwayland.so;libqxcb.so
-          # --- TO JEST KLUCZOWA POPRAWKA ---
-          # Pozwala uruchomić linuxdeploy wewnątrz kontenera bez FUSE
           APPIMAGE_EXTRACT_AND_RUN: 1
         run: |
           # 1. Download Tools
@@ -118,7 +116,7 @@ jobs:
           wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
           chmod +x linuxdeploy*.AppImage
 
-          # 2. Manual fix for Wayland Plugins (The "Clean" Loop way)
+          # 2. Manual fix for Wayland Plugins
           PLUGINS_SRC=$(qmake6 -query QT_INSTALL_PLUGINS)
           mkdir -p AppDir/usr/plugins
           for folder in wayland-shell-integration wayland-graphics-integration-client wayland-decoration-client; do
@@ -129,14 +127,15 @@ jobs:
           done
 
           # 3. Build AppImage
-          # Ponieważ mamy ustawione APPIMAGE_EXTRACT_AND_RUN=1, to zadziała bez błędu FUSE
+          # ZMIANA: Dodano flagę -e wskazującą plik wykonywalny
           ./linuxdeploy-x86_64.AppImage \
             --appdir AppDir \
+            -e AppDir/usr/bin/app${{ env.APP_NAME }} \
             --plugin qt \
             --output appimage \
             --icon-file app${{ env.APP_NAME }}.png \
             --desktop-file app${{ env.APP_NAME }}.desktop
-
+            
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:

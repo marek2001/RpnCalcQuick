@@ -8,11 +8,7 @@ on:
 
 jobs:
   build:
-    # Używamy os z macierzy. Dla Archa będzie to ubuntu-latest, 
-    # ale uruchomimy na nim kontener (zdefiniowany w matrix.include).
     runs-on: ${{ matrix.os }}
-    
-    # Jeśli zdefiniowano kontener w macierzy (czyli dla Archa), użyj go.
     container: ${{ matrix.container }}
 
     strategy:
@@ -46,30 +42,29 @@ jobs:
             is_arch: true
 
     steps:
-    # 0. Przygotowanie środowiska Arch Linux (musi być przed checkout dla pewności)
+    # 0. Przygotowanie środowiska Arch Linux (musi być PRZED checkout)
     - name: Setup Arch Linux Environment
       if: matrix.is_arch
       run: |
-        # Inicjalizacja kluczy i aktualizacja systemu
+        # Inicjalizacja kluczy i aktualizacja (krytyczne dla Archa w Dockerze)
         pacman -Sy --noconfirm archlinux-keyring
         pacman -Su --noconfirm
         
-        # Instalacja podstawowych narzędzi, kompilatorów i CMake
-        # base-devel zawiera gcc, make, itp.
-        pacman -S --noconfirm base-devel cmake git ninja
+        # Instalacja Gita (wymagany do checkout), CMake, kompilatorów
+        pacman -S --noconfirm base-devel cmake git
         
-        # Instalacja Clang jeśli jest wymagany w macierzy
+        # Instalacja Clang tylko jeśli jest wybrany w macierzy
         if [ "${{ matrix.c_compiler }}" == "clang" ]; then
           pacman -S --noconfirm clang
         fi
         
-        # Instalacja Qt 6 z repozytoriów Archa
+        # Instalacja bibliotek Qt6
         pacman -S --noconfirm qt6-base qt6-declarative qt6-5compat
 
+    # 1. Pobranie kodu
     - uses: actions/checkout@v4
 
-    # 1. Instalacja Qt (TYLKO WINDOWS)
-    # Na Archu zainstalowaliśmy już Qt przez pacman powyżej.
+    # 2. Instalacja Qt na Windows (na Archu zrobiliśmy to pacmanem wyżej)
     - name: Install Qt (Windows)
       if: matrix.is_windows
       uses: jurplel/install-qt-action@v3
@@ -78,33 +73,33 @@ jobs:
         cache: true
         modules: 'qt5compat'
 
-    - name: Set reusable strings
-      id: strings
-      shell: bash
-      run: |
-        echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
-
-    # Konfiguracja CMake
+    # 3. Konfiguracja CMake (ZMIANA: Używamy ścieżek relatywnych)
     - name: Configure CMake
       run: >
-        cmake -B ${{ steps.strings.outputs.build-output-dir }}
+        cmake -B build
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         -G "${{ matrix.generator }}"
-        -S ${{ github.workspace }}
+        -S .
 
+    # 4. Budowanie
     - name: Build
-      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+      run: cmake --build build --config ${{ matrix.build_type }}
+
+    # 5. Testy (opcjonalne, pomijamy GUI na Linuxie bo brak ekranu)
+    - name: Test
+      if: matrix.is_windows 
+      working-directory: build
+      run: ctest --build-config ${{ matrix.build_type }}
 
     # --- WINDOWS DEPLOYMENT ---
-    
     - name: Package Windows (Run windeployqt)
       if: matrix.is_windows
       shell: cmd
       run: |
         mkdir dist
-        copy ${{ steps.strings.outputs.build-output-dir }}\Release\appRpnCalcQuick.exe dist\
+        copy build\Release\appRpnCalcQuick.exe dist\
         windeployqt --qmldir . --no-translations --compiler-runtime dist\appRpnCalcQuick.exe
 
     - name: Upload Artifact (Windows)

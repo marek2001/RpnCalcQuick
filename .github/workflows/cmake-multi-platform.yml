@@ -94,9 +94,17 @@ jobs:
 
       - name: Build & Install to AppDir
         run: |
+          # Konfiguracja i budowa
           cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DCMAKE_INSTALL_PREFIX=/usr
           cmake --build build -j$(nproc)
-          make -C build install DESTDIR=AppDir
+          
+          # ZMIANA: Instalacja do AppDir używając pełnej ścieżki ($PWD)
+          # Dzięki temu pliki trafią do /home/runner/work/.../AppDir, a nie do ./build/AppDir
+          DESTDIR="$PWD/AppDir" cmake --install build
+
+          # Debugging (opcjonalnie): Pokaż co dokładnie się zainstalowało, żeby mieć pewność
+          echo "=== Content of AppDir ==="
+          find AppDir -maxdepth 4
 
       - name: Prepare Assets
         run: |

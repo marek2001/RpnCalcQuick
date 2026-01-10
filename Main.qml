@@ -319,8 +319,8 @@ ApplicationWindow {
         onActivated: ui.simulatePress(",") }
 
     // 6. Undo / Redo
-    Shortcut { sequence: StandardKey.Undo; context: Qt.ApplicationShortcut; onActivated: rpn.undo() }
-    Shortcut { sequence: StandardKey.Redo; context: Qt.ApplicationShortcut; onActivated: rpn.redo() }
+    Shortcut { sequences: [StandardKey.Undo]; context: Qt.ApplicationShortcut; onActivated: rpn.undo() }
+    Shortcut { sequences: [StandardKey.Redo]; context: Qt.ApplicationShortcut; onActivated: rpn.redo() }
 
     // 7. Operatory (+, -, *, /)
     // UWAGA: "=" działa jako plus (dla wygody na klawiaturze bez numpada)

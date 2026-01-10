@@ -1,4 +1,4 @@
-name: Build Packages (Exe, AppImage, Arch)
+name: Release Pipeline
 
 on:
   push:
@@ -6,119 +6,134 @@ on:
   pull_request:
     branches: [ "master" ]
 
+env:
+  APP_NAME: RpnCalcQuick
+  BUILD_TYPE: Release
+
 jobs:
   # ==========================================
-  # 1. WINDOWS (.exe / .zip)
+  # 1. WINDOWS (MSVC + Qt 6.4)
   # ==========================================
-  build-windows:
+  windows:
+    name: 🪟 Windows (Exe/Zip)
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Install Qt
-      uses: jurplel/install-qt-action@v3
-      with:
-        version: '6.4.0'
-        modules: 'qt5compat qtshadertools'
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: '6.4.0'
+          modules: 'qt5compat qtshadertools'
 
-    - name: Configure CMake
-      run: cmake -B build -DCMAKE_BUILD_TYPE=Release -G "Visual Studio 17 2022"
+      - name: Configure & Build
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -G "Visual Studio 17 2022"
+          cmake --build build --config ${{ env.BUILD_TYPE }}
 
-    - name: Build
-      run: cmake --build build --config Release
+      - name: Package & Deploy
+        shell: cmd
+        run: |
+          mkdir dist
+          copy build\${{ env.BUILD_TYPE }}\app${{ env.APP_NAME }}.exe dist\
+          windeployqt --qmldir . --no-translations --compiler-runtime dist\app${{ env.APP_NAME }}.exe
+          7z a ${{ env.APP_NAME }}-Windows.zip .\dist\*
 
-    - name: Deploy & Package (Zip)
-      shell: cmd
-      run: |
-        mkdir dist
-        copy build\Release\appRpnCalcQuick.exe dist\
-        windeployqt --qmldir . --no-translations --compiler-runtime dist\appRpnCalcQuick.exe
-        
-        :: Pakowanie do ZIP (używamy wbudowanego w powershell lub 7z)
-        7z a RpnCalcQuick-Windows.zip .\dist\*
-
-    - name: Upload Windows Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: RpnCalcQuick-Windows-Zip
-        path: RpnCalcQuick-Windows.zip
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-Windows-Zip
+          path: ${{ env.APP_NAME }}-Windows.zip
 
   # ==========================================
-  # 2. ARCH LINUX (.pkg.tar.zst)
+  # 2. ARCH LINUX (Native Package)
   # ==========================================
-  build-arch:
+  arch-package:
+    name: 🐧 Arch Linux (Pkg)
     runs-on: ubuntu-latest
     container: archlinux:latest
     steps:
-    - name: Install System Dependencies
-      run: |
-        pacman -Sy --noconfirm archlinux-keyring
-        pacman -Su --noconfirm
-        # sudo jest potrzebne do makepkg (nie można budować jako root)
-        pacman -S --noconfirm base-devel cmake git sudo qt6-base qt6-declarative qt6-5compat qt6-shadertools
+      - name: Prepare System
+        run: |
+          pacman -Sy --noconfirm archlinux-keyring
+          pacman -Su --noconfirm
+          pacman -S --noconfirm base-devel cmake git sudo qt6-base qt6-declarative qt6-5compat qt6-shadertools qt6-svg
 
-    - uses: actions/checkout@v4
-    
-    - name: Build Package (makepkg)
-      run: |
-        # Fix: makepkg nie może działać jako root. Tworzymy usera 'builder'.
-        useradd builder -m
-        echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-        chmod -R a+rw .
-        
-        # Uruchamiamy makepkg jako user builder
-        # -s: instaluje zależności, -c: czyści po budowie
-        su builder -c "makepkg -s --noconfirm"
+      - uses: actions/checkout@v4
 
-    - name: Upload Arch Package
-      uses: actions/upload-artifact@v4
-      with:
-        name: RpnCalcQuick-Arch-Pkg
-        path: ./*.pkg.tar.zst
+      - name: Build Package (makepkg)
+        run: |
+          # Makepkg cannot run as root, so we create a temporary builder user
+          useradd builder -m
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chmod -R a+rw .
+          su builder -c "makepkg -s --noconfirm"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-Arch-Pkg
+          path: ./*.pkg.tar.zst
 
   # ==========================================
-  # 3. APPIMAGE (Linux Universal)
+  # 3. APPIMAGE (Arch Environment)
   # ==========================================
-  build-appimage:
+  appimage:
+    name: 📦 AppImage (Universal)
     runs-on: ubuntu-latest
-    # Budujemy na Ubuntu 20.04/22.04 (nie Arch), żeby AppImage działał na starszych systemach
+    container: archlinux:latest
     steps:
-    - uses: actions/checkout@v4
+      - name: Install Dependencies
+        run: |
+          pacman -Sy --noconfirm archlinux-keyring && pacman -Su --noconfirm
+          pacman -S --noconfirm base-devel cmake git wget file patchelf \
+            qt6-base qt6-declarative qt6-5compat qt6-shadertools qt6-wayland qt6-svg
 
-    - name: Install Qt
-      uses: jurplel/install-qt-action@v3
-      with:
-        version: '6.4.0'
-        modules: 'qt5compat qtshadertools'
+      - uses: actions/checkout@v4
 
-    - name: Install Linux Deps
-      run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libxkbcommon-x11-0 libegl1-mesa-dev libxcb-xinerama0 libfuse2 file
+      - name: Build & Install to AppDir
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DCMAKE_INSTALL_PREFIX=/usr
+          cmake --build build -j$(nproc)
+          make -C build install DESTDIR=AppDir
 
-    - name: Configure & Build
-      run: |
-        cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
-        cmake --build build --config Release
-        # Instalujemy do folderu AppDir
-        make -C build install DESTDIR=AppDir
+      - name: Prepare Assets
+        run: |
+          mkdir -p AppDir/usr/share/{applications,icons/hicolor/256x256/apps}
+          cp app${{ env.APP_NAME }}.desktop AppDir/usr/share/applications/
+          cp app${{ env.APP_NAME }}.png AppDir/usr/share/icons/hicolor/256x256/apps/
 
-    - name: Create AppImage
-      run: |
-        # Pobieramy narzędzia linuxdeploy
-        wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-        wget https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
-        chmod +x linuxdeploy*.AppImage
+      - name: Generate AppImage
+        env:
+          QMAKE: /usr/bin/qmake6
+          QML_SOURCES_PATHS: ${{ github.workspace }}
+          EXTRA_PLATFORM_PLUGINS: libqwayland.so;libqxcb.so
+        run: |
+          # 1. Download Tools
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy*.AppImage
 
-        # Ustawiamy zmienną, by deployqt znalazł qmake
-        export PATH=$PATH
+          # 2. Manual fix for Wayland Plugins (The "Clean" Loop way)
+          PLUGINS_SRC=$(qmake6 -query QT_INSTALL_PLUGINS)
+          mkdir -p AppDir/usr/plugins
+          for folder in wayland-shell-integration wayland-graphics-integration-client wayland-decoration-client; do
+            if [ -d "$PLUGINS_SRC/$folder" ]; then
+              echo "Copying $folder..."
+              cp -a "$PLUGINS_SRC/$folder" AppDir/usr/plugins/
+            fi
+          done
 
-        # Generowanie AppImage
-        # --appdir: gdzie zainstalowaliśmy pliki
-        # --plugin qt: automatycznie dołącza biblioteki Qt
-        # --output appimage: tworzy plik wyjściowy
-        ./linuxdeploy-x86_64.AppImage --appdir build/AppDir --plugin qt --output appimage --icon-file appRpnCalcQuick.png --desktop-file appRpnCalcQuick.desktop
+          # 3. Build AppImage
+          ./linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            --plugin qt \
+            --output appimage \
+            --icon-file app${{ env.APP_NAME }}.png \
+            --desktop-file app${{ env.APP_NAME }}.desktop
 
-    - name: Upload AppImage
-      uses: actions/upload-artifact@v4
-      with:
-        name: RpnCalcQuick-AppImage
-        path: ./*.AppImage
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-AppImage
+          path: ./*.AppImage

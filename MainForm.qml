@@ -14,17 +14,13 @@ Item {
 
     // ===== API =====
     // Atrapa modelu dla Designera
-    property var stackModel: ListModel {
-        ListElement { value: "3.1415926" }
-        ListElement { value: "125.00" }
-    }
-    property string historyText: "3 Enter\n4 +\nResult: 7"
+    property var stackModel: null
+    property string historyText: ""
     property string decimalSeparator: "."
     property bool canUndo: false
     property bool canRedo: false
 
     property var stackChangeCallback: null
-    // NOWOŚĆ: Rozdzielenie surowego tekstu od wyświetlanego
     property string inputText: ""
     property string displayText: formatDisplayText(inputText)
 
@@ -197,8 +193,6 @@ Item {
             id: panes
             Layout.fillWidth: true; Layout.fillHeight: true; orientation: Qt.Vertical; clip: true
             handle: Rectangle { implicitHeight: root.splitHandleH; color: panes.palette.mid; opacity: 0.6; radius: 4 }
-
-            // ... (Ratio Logic - skrócone dla czytelności) ...
             property real stackRatio: 0.70
             property bool applying: false
             function applyRatio() {
@@ -354,26 +348,67 @@ Item {
             }
             // History
             Frame {
-                id: historyFrame; padding: 6; SplitView.minimumHeight: root.historyMinH; background: Rectangle { radius: root.cornerRadius; color: historyFrame.palette.window; border.color: historyFrame.palette.mid; border.width: 1 }
+                id: historyFrame
+                padding: 6
+                SplitView.minimumHeight: root.historyMinH
+                background: Rectangle {
+                    radius: root.cornerRadius
+                    color: historyFrame.palette.window
+                    border.color: historyFrame.palette.mid
+                    border.width: 1
+                }
+
                 ColumnLayout {
                     anchors.fill: parent; spacing: 6
-                    RowLayout { Layout.fillWidth: true; Label { text: "History"; opacity: 0.85 } Item { Layout.fillWidth: true } ToolButton { text: "Clear"; onClicked: root.clearHistoryRequest() } }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label { text: "History"; opacity: 0.85 }
+                        Item { Layout.fillWidth: true }
+                        ToolButton { text: "Clear"; onClicked: root.clearHistoryRequest() }
+                    }
+
                     Flickable {
-                        id: historyFlick; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; boundsBehavior: Flickable.StopAtBounds; flickableDirection: Flickable.AutoFlickDirection
-                        contentWidth: historyTextDisplay.implicitWidth; contentHeight: historyTextDisplay.implicitHeight
+                        id: historyFlick
+                        Layout.fillWidth: true; Layout.fillHeight: true
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        flickableDirection: Flickable.VerticalFlick
+                        contentWidth: width
+                        contentHeight: historyTextDisplay.implicitHeight
+
                         property bool showHistBars: false
                         Timer { id: histBarTimer; interval: 700; repeat: false; onTriggered: historyFlick.showHistBars = false }
                         onContentYChanged: { historyFlick.showHistBars = true; histBarTimer.restart() }
-                        onContentXChanged: { historyFlick.showHistBars = true; histBarTimer.restart() }
                         onMovementStarted: { historyFlick.showHistBars = true; histBarTimer.restart() }
                         onMovementEnded: histBarTimer.restart()
-                        ScrollBar.vertical: ScrollBar { id: histVBar; policy: ScrollBar.AsNeeded; hoverEnabled: true; z: 100; width: 10; padding: 2; readonly property bool needed: historyFlick.contentHeight > historyFlick.height + 1; visible: needed; opacity: (needed && (historyFlick.showHistBars || pressed || hovered)) ? 1 : 0; Behavior on opacity { NumberAnimation { duration: 140 } } }
-                        ScrollBar.horizontal: ScrollBar { id: histHBar; policy: ScrollBar.AsNeeded; hoverEnabled: true; z: 100; height: 10; padding: 2; readonly property bool needed: historyFlick.contentWidth > historyFlick.width + 1; visible: needed; opacity: (needed && (historyFlick.showHistBars || pressed || hovered)) ? 1 : 0; Behavior on opacity { NumberAnimation { duration: 140 } } }
-                        TextEdit { id: historyTextDisplay; x: 0; y: 0; text: root.historyText; readOnly: true; selectByMouse: true; wrapMode: TextEdit.NoWrap; font.family: "Monospace"; color: historyFrame.palette.text; width: Math.max(historyFlick.width, implicitWidth) }
+
+                        ScrollBar.vertical: ScrollBar {
+                            id: histVBar
+                            policy: ScrollBar.AsNeeded
+                            hoverEnabled: true
+                            z: 100; width: 10; padding: 2
+                            readonly property bool needed: historyFlick.contentHeight > historyFlick.height + 1
+                            visible: needed
+                            opacity: (needed && (historyFlick.showHistBars || pressed || hovered)) ? 1 : 0
+                            Behavior on opacity { NumberAnimation { duration: 140 } }
+                        }
+                        
+
+                        TextEdit {
+                            id: historyTextDisplay
+                            x: 0; y: 0
+                            text: root.historyText
+                            readOnly: true
+                            selectByMouse: true
+                            width: parent.width
+                            wrapMode: TextEdit.Wrap
+
+                            font.family: "Monospace"
+                            color: historyFrame.palette.text
+                        }
                     }
                 }
-            }
-        }
+            }        }
 
         // Keypad
         GridLayout {
@@ -439,7 +474,6 @@ Item {
 
     Popup {
         id: toast
-        // [NAPRAWA] Dodajemy brakującą właściwość "text"
         property string text: ""
 
         x: (parent.width - width)/2

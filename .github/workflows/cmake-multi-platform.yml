@@ -86,6 +86,7 @@ jobs:
       - name: Install Dependencies
         run: |
           pacman -Sy --noconfirm archlinux-keyring && pacman -Su --noconfirm
+          # file, wget, patchelf są niezbędne dla linuxdeploy
           pacman -S --noconfirm base-devel cmake git wget file patchelf \
             qt6-base qt6-declarative qt6-5compat qt6-shadertools qt6-wayland qt6-svg
 
@@ -108,6 +109,9 @@ jobs:
           QMAKE: /usr/bin/qmake6
           QML_SOURCES_PATHS: ${{ github.workspace }}
           EXTRA_PLATFORM_PLUGINS: libqwayland.so;libqxcb.so
+          # --- TO JEST KLUCZOWA POPRAWKA ---
+          # Pozwala uruchomić linuxdeploy wewnątrz kontenera bez FUSE
+          APPIMAGE_EXTRACT_AND_RUN: 1
         run: |
           # 1. Download Tools
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
@@ -125,6 +129,7 @@ jobs:
           done
 
           # 3. Build AppImage
+          # Ponieważ mamy ustawione APPIMAGE_EXTRACT_AND_RUN=1, to zadziała bez błędu FUSE
           ./linuxdeploy-x86_64.AppImage \
             --appdir AppDir \
             --plugin qt \

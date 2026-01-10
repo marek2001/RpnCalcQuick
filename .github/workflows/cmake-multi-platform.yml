@@ -36,7 +36,18 @@ jobs:
         run: |
           mkdir dist
           copy build\${{ env.BUILD_TYPE }}\app${{ env.APP_NAME }}.exe dist\
+          
+          :: Uruchomienie windeployqt
           windeployqt --qmldir . --no-translations --compiler-runtime dist\app${{ env.APP_NAME }}.exe
+          
+          :: --- CZYSZCZENIE ZBĘDNYCH KATALOGÓW ---
+          :: Usuwamy obsługę sieci (SSL) i baz danych, bo aplikacja ich nie używa
+          if exist dist\tls rmdir /s /q dist\tls
+          if exist dist\sqldrivers rmdir /s /q dist\sqldrivers
+          if exist dist\networkinformation rmdir /s /q dist\networkinformation
+          :: ---------------------------------------
+
+          :: Pakowanie do ZIP
           7z a ${{ env.APP_NAME }}-Windows.zip .\dist\*
 
       - name: Upload Artifact

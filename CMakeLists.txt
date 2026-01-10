@@ -7,7 +7,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Qt6 6.4 REQUIRED COMPONENTS Quick Qml QuickControls2 Widgets)
 
 qt_standard_project_setup()
-qt_policy(SET QTP0001 NEW)
+if(COMMAND qt_policy)
+    qt_policy(SET QTP0001 NEW)
+endif()
 
 qt_add_executable(appRpnCalcQuick MANUAL_FINALIZATION
         main.cpp

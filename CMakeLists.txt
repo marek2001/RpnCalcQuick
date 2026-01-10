@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Qt6 6.2 REQUIRED COMPONENTS Quick Qml QuickControls2 Widgets)
 
 qt_standard_project_setup()
+qt_policy(SET QTP0001 NEW)
 
 qt_add_executable(appRpnCalcQuick MANUAL_FINALIZATION
         main.cpp
@@ -32,7 +33,7 @@ qt_import_qml_plugins(appRpnCalcQuick)
 
 qt_finalize_executable(appRpnCalcQuick)
 
-qt_policy(SET QTP0001 NEW)
+
 
 include(GNUInstallDirs)
 

@@ -1,4 +1,4 @@
-name: CMake Build & Test (Arch + Windows)
+name: Build Packages (Exe, AppImage, Arch)
 
 on:
   push:
@@ -7,104 +7,118 @@ on:
     branches: [ "master" ]
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # --- Windows Configuration ---
-          - os: windows-latest
-            build_type: Release
-            c_compiler: cl
-            cpp_compiler: cl
-            generator: "Visual Studio 17 2022"
-            is_windows: true
-
-          # --- Arch Linux Configuration (GCC) ---
-          - os: ubuntu-latest
-            container: archlinux:latest
-            build_type: Release
-            c_compiler: gcc
-            cpp_compiler: g++
-            generator: "Unix Makefiles"
-            is_arch: true
-
-          # --- Arch Linux Configuration (Clang) ---
-          - os: ubuntu-latest
-            container: archlinux:latest
-            build_type: Release
-            c_compiler: clang
-            cpp_compiler: clang++
-            generator: "Unix Makefiles"
-            is_arch: true
-
+  # ==========================================
+  # 1. WINDOWS (.exe / .zip)
+  # ==========================================
+  build-windows:
+    runs-on: windows-latest
     steps:
-    # 0. Przygotowanie środowiska Arch Linux (musi być PRZED checkout)
-    - name: Setup Arch Linux Environment
-      if: matrix.is_arch
-      run: |
-        # Inicjalizacja kluczy i aktualizacja (krytyczne dla Archa w Dockerze)
-        pacman -Sy --noconfirm archlinux-keyring
-        pacman -Su --noconfirm
-        
-        # Instalacja Gita (wymagany do checkout), CMake, kompilatorów
-        pacman -S --noconfirm base-devel cmake git
-        
-        # Instalacja Clang tylko jeśli jest wybrany w macierzy
-        if [ "${{ matrix.c_compiler }}" == "clang" ]; then
-          pacman -S --noconfirm clang
-        fi
-        
-        # Instalacja bibliotek Qt6
-        pacman -S --noconfirm qt6-base qt6-declarative qt6-5compat
-
-    # 1. Pobranie kodu
     - uses: actions/checkout@v4
 
-    # 2. Instalacja Qt na Windows (na Archu zrobiliśmy to pacmanem wyżej)
-    - name: Install Qt (Windows)
-      if: matrix.is_windows
+    - name: Install Qt
       uses: jurplel/install-qt-action@v3
       with:
         version: '6.4.0'
-        cache: true
         modules: 'qt5compat qtshadertools'
 
-    # 3. Konfiguracja CMake (ZMIANA: Używamy ścieżek relatywnych)
     - name: Configure CMake
-      run: >
-        cmake -B build
-        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
-        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
-        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-        -G "${{ matrix.generator }}"
-        -S .
+      run: cmake -B build -DCMAKE_BUILD_TYPE=Release -G "Visual Studio 17 2022"
 
-    # 4. Budowanie
     - name: Build
-      run: cmake --build build --config ${{ matrix.build_type }}
+      run: cmake --build build --config Release
 
-    # 5. Testy (opcjonalne, pomijamy GUI na Linuxie bo brak ekranu)
-    - name: Test
-      if: matrix.is_windows 
-      working-directory: build
-      run: ctest --build-config ${{ matrix.build_type }}
-
-    # --- WINDOWS DEPLOYMENT ---
-    - name: Package Windows (Run windeployqt)
-      if: matrix.is_windows
+    - name: Deploy & Package (Zip)
       shell: cmd
       run: |
         mkdir dist
         copy build\Release\appRpnCalcQuick.exe dist\
         windeployqt --qmldir . --no-translations --compiler-runtime dist\appRpnCalcQuick.exe
+        
+        :: Pakowanie do ZIP (używamy wbudowanego w powershell lub 7z)
+        7z a RpnCalcQuick-Windows.zip .\dist\*
 
-    - name: Upload Artifact (Windows)
-      if: matrix.is_windows
+    - name: Upload Windows Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: RpnCalcQuick-Windows
-        path: dist/
+        name: RpnCalcQuick-Windows-Zip
+        path: RpnCalcQuick-Windows.zip
+
+  # ==========================================
+  # 2. ARCH LINUX (.pkg.tar.zst)
+  # ==========================================
+  build-arch:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+    - name: Install System Dependencies
+      run: |
+        pacman -Sy --noconfirm archlinux-keyring
+        pacman -Su --noconfirm
+        # sudo jest potrzebne do makepkg (nie można budować jako root)
+        pacman -S --noconfirm base-devel cmake git sudo qt6-base qt6-declarative qt6-5compat qt6-shadertools
+
+    - uses: actions/checkout@v4
+    
+    - name: Build Package (makepkg)
+      run: |
+        # Fix: makepkg nie może działać jako root. Tworzymy usera 'builder'.
+        useradd builder -m
+        echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+        chmod -R a+rw .
+        
+        # Uruchamiamy makepkg jako user builder
+        # -s: instaluje zależności, -c: czyści po budowie
+        su builder -c "makepkg -s --noconfirm"
+
+    - name: Upload Arch Package
+      uses: actions/upload-artifact@v4
+      with:
+        name: RpnCalcQuick-Arch-Pkg
+        path: ./*.pkg.tar.zst
+
+  # ==========================================
+  # 3. APPIMAGE (Linux Universal)
+  # ==========================================
+  build-appimage:
+    runs-on: ubuntu-latest
+    # Budujemy na Ubuntu 20.04/22.04 (nie Arch), żeby AppImage działał na starszych systemach
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v3
+      with:
+        version: '6.4.0'
+        modules: 'qt5compat qtshadertools'
+
+    - name: Install Linux Deps
+      run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libxkbcommon-x11-0 libegl1-mesa-dev libxcb-xinerama0 libfuse2 file
+
+    - name: Configure & Build
+      run: |
+        cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+        cmake --build build --config Release
+        # Instalujemy do folderu AppDir
+        make -C build install DESTDIR=AppDir
+
+    - name: Create AppImage
+      run: |
+        # Pobieramy narzędzia linuxdeploy
+        wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+        wget https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+        chmod +x linuxdeploy*.AppImage
+
+        # Ustawiamy zmienną, by deployqt znalazł qmake
+        export PATH=$PATH
+
+        # Generowanie AppImage
+        # --appdir: gdzie zainstalowaliśmy pliki
+        # --plugin qt: automatycznie dołącza biblioteki Qt
+        # --output appimage: tworzy plik wyjściowy
+        ./linuxdeploy-x86_64.AppImage --appdir build/AppDir --plugin qt --output appimage --icon-file appRpnCalcQuick.png --desktop-file appRpnCalcQuick.desktop
+
+    - name: Upload AppImage
+      uses: actions/upload-artifact@v4
+      with:
+        name: RpnCalcQuick-AppImage
+        path: ./*.AppImage

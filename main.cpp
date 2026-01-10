@@ -17,7 +17,7 @@ int main(int argc, char *argv[])
     qmlRegisterType<RpnEngine>("RpnCalc.Backend", 0, 8, "RpnEngine");
 
     QQmlApplicationEngine engine;
-    engine.load(QUrl(QStringLiteral("qrc:/RpnCalc/Main.qml")));
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/RpnCalc/Main.qml")));
 
 
     if (engine.rootObjects().isEmpty())

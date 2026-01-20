@@ -26,6 +26,8 @@ qt_add_qml_module(appRpnCalcQuick
         QML_FILES
         qml/Main.qml
         qml/MainForm.qml
+        RESOURCES
+        icons/RpnCalcQuickIcon.svg
 )
 
 target_link_libraries(appRpnCalcQuick PRIVATE
@@ -49,6 +51,7 @@ install(FILES appRpnCalcQuick.desktop
         RENAME appRpnCalcQuick.desktop
 )
 
-install(FILES icons/appRpnCalcQuick.png
-        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/128x128/apps
+install(FILES icons/RpnCalcQuickIcon.svg
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+        RENAME appRpnCalcQuick.svg
 )

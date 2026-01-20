@@ -1,6 +1,7 @@
 #include <QApplication>
 #include <QQmlApplicationEngine>
 #include <QtQml/qqml.h>
+#include <QIcon>
 
 #include <QtQuickControls2/QQuickStyle>
 
@@ -9,6 +10,9 @@
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+    
+    // Set application icon
+    app.setWindowIcon(QIcon(":/qt/qml/RpnCalc/icons/RpnCalcQuickIcon.svg"));
     
     QQuickStyle::setFallbackStyle("Fusion");
     QGuiApplication::setDesktopFileName("appRpnCalcQuick");

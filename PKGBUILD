@@ -6,8 +6,6 @@ pkgdesc="RPN calculator built with Qt Quick (Git version)"
 arch=('x86_64')
 url="https://github.com/marek2001/RpnCalcQuick"
 license=('GPL3')
-
-# [POPRAWKA] Dodano qt6-shadertools - bez tego aplikacja może się nie uruchomić
 depends=('qt6-base' 'qt6-declarative' 'qt6-5compat' 'qt6-svg' 'qt6-shadertools')
 
 makedepends=('git' 'cmake' 'ninja')
@@ -23,7 +21,6 @@ pkgver() {
 }
 
 build() {
-    # Używamy zmiennej srcdir dla pewności
     cmake -B build -S "RpnCalcQuick" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/usr \

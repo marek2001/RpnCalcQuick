@@ -24,7 +24,9 @@ jobs:
         uses: jurplel/install-qt-action@v3
         with:
           version: '6.6.0'
-          modules: 'qt5compat qtshadertools'
+          modules: 'qt5compat qtshadertools qtsvg'
+          cache: true
+          cache-key-prefix: 'install-qt-action'
 
       - name: Configure & Build
         run: |

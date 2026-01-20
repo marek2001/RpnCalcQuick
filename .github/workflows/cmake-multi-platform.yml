@@ -23,7 +23,7 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@v3
         with:
-          version: '6.5.0'
+          version: '6.6.0'
           modules: 'qt5compat qtshadertools'
 
       - name: Configure & Build

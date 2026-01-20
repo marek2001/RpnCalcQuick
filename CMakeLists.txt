@@ -9,7 +9,6 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Quick Qml QuickControls2 Widgets)
 qt_standard_project_setup()
 if(COMMAND qt_policy)
     qt_policy(SET QTP0001 NEW)
-    qt_policy(SET QTP0004 NEW)
 endif()
 
 qt_add_executable(appRpnCalcQuick MANUAL_FINALIZATION

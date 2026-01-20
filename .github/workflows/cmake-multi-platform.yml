@@ -24,7 +24,7 @@ jobs:
         uses: jurplel/install-qt-action@v3
         with:
           version: '6.6.0'
-          modules: 'qt5compat qtshadertools qtsvg'
+          modules: 'qt5compat qtshadertools'
           cache: true
           cache-key-prefix: 'install-qt-action'
 
@@ -70,7 +70,7 @@ jobs:
         run: |
           pacman -Sy --noconfirm archlinux-keyring
           pacman -Su --noconfirm
-          pacman -S --noconfirm base-devel cmake git sudo qt6-base qt6-declarative qt6-5compat qt6-shadertools qt6-svg
+          pacman -S --noconfirm base-devel cmake git sudo qt6-base qt6-declarative qt6-5compat qt6-shadertools
 
       - uses: actions/checkout@v4
 
@@ -101,7 +101,7 @@ jobs:
           pacman -Sy --noconfirm archlinux-keyring && pacman -Su --noconfirm
           # file, wget, patchelf są niezbędne dla linuxdeploy
           pacman -S --noconfirm base-devel cmake git wget file patchelf \
-            qt6-base qt6-declarative qt6-5compat qt6-shadertools qt6-wayland qt6-svg
+            qt6-base qt6-declarative qt6-5compat qt6-shadertools qt6-wayland
 
       - uses: actions/checkout@v4
 

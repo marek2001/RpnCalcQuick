@@ -6,7 +6,7 @@ pkgdesc="RPN calculator built with Qt Quick (Git version)"
 arch=('x86_64')
 url="https://github.com/marek2001/RpnCalcQuick"
 license=('GPL3')
-depends=('qt6-base' 'qt6-declarative' 'qt6-5compat' 'qt6-svg' 'qt6-shadertools')
+depends=('qt6-base' 'qt6-declarative' 'qt6-5compat' 'qt6-shadertools')
 
 makedepends=('git' 'cmake' 'ninja')
 provides=("rpncalcquick")

@@ -119,8 +119,15 @@ jobs:
 
       - name: Prepare Assets
         run: |
-          mkdir -p AppDir/usr/share/{applications,icons/hicolor/256x256/apps}
-          cp app${{ env.APP_NAME }}.desktop AppDir/usr/share/applications/
+          # Install ImageMagick/rsvg-convert to convert SVG to PNG for AppImage
+          pacman -S --noconfirm librsvg
+          
+          # Convert SVG icon to PNG for AppImage (256x256)
+          rsvg-convert -w 256 -h 256 icons/RpnCalcQuickIcon.svg -o app${{ env.APP_NAME }}.png
+          
+          # Note: Desktop file and scalable SVG icon are already installed via CMake
+          # but we need PNG for AppImage compatibility
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
           cp app${{ env.APP_NAME }}.png AppDir/usr/share/icons/hicolor/256x256/apps/
 
       - name: Generate AppImage
@@ -147,14 +154,13 @@ jobs:
           done
 
           # 3. Build AppImage
-          # ZMIANA: Dodano flagę -e wskazującą plik wykonywalny
           ./linuxdeploy-x86_64.AppImage \
             --appdir AppDir \
             -e AppDir/usr/bin/app${{ env.APP_NAME }} \
             --plugin qt \
             --output appimage \
             --icon-file app${{ env.APP_NAME }}.png \
-            --desktop-file app${{ env.APP_NAME }}.desktop
+            --desktop-file AppDir/usr/share/applications/app${{ env.APP_NAME }}.desktop
             
       - name: Upload Artifact
         uses: actions/upload-artifact@v4

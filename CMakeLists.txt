@@ -25,6 +25,10 @@ qt_add_qml_module(appRpnCalcQuick
         QML_FILES
         qml/Main.qml
         qml/MainForm.qml
+        qml/InputHandler.qml
+        qml/DisplayFormatter.qml
+        qml/KeyboardController.qml
+        qml/CommandDispatcher.qml
         RESOURCES
         icons/RpnCalcQuickIcon.svg
 )

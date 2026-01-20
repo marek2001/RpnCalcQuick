@@ -8,12 +8,11 @@ import Qt5Compat.GraphicalEffects
 
 Item {
     id: root
-    focus: true // Root ma focus na start (jako ekran LCD)
+    focus: true
 
     Component.onCompleted: forceActiveFocus()
 
     // ===== API =====
-    // Atrapa modelu dla Designera
     property var stackModel: null
     property string historyText: ""
     property string decimalSeparator: "."
@@ -22,17 +21,17 @@ Item {
 
     property var stackChangeCallback: null
     property string inputText: ""
-    property string displayText: formatDisplayText(inputText)
+    property string displayText: ""
 
-    // Alias wskazujący na root (bo to root obsługuje teraz klawisze)
     property alias inputItem: root
-
     property alias stackCurrentIndex: stackList.currentIndex
+    property alias stackCurrentItem: stackList.currentItem
     readonly property int stackCount: stackList.count
     readonly property bool isStackEditing: (stackList && stackList.currentItem) ? stackList.currentItem.editing : false
 
     signal inputEnter()
     signal keypadAction(var key)
+    signal keyPressed(var event)
     signal pushPi()
     signal pushE()
     signal undoRequest()
@@ -46,62 +45,16 @@ Item {
     function forceInputFocus() { root.forceActiveFocus() }
     function ensureStackVisible(idx) { stackList.positionViewAtIndex(idx, ListView.Visible) }
     function showToast(msg) { toast.show(msg) }
+    function focusKeypad() { keypad.focusFirst() }
 
     function simulatePress(rawInput) {
         return keypad.simulatePress(rawInput)
     }
 
-    // --- FUNKCJA FORMATUJĄCA (Grupowanie cyfr) ---
-    function formatDisplayText(raw) {
-        if (raw.trim() === "") return "";
-
-        let sep = Qt.locale().groupSeparator; // Np. spacja
-        let dec = Qt.locale().decimalPoint;   // Np. przecinek lub kropka
-
-        // Czyścimy wszystko co nie jest cyfrą, separatorem lub minusem
-        let cleaned = raw.replace(/[^0-9.,\-]/g, '');
-
-        let parts = cleaned.split(dec);
-        // Jeśli jest więcej niż jeden separator dziesiętny, zwracamy oryginał (błąd)
-        if (parts.length > 2) return raw;
-
-        let intPart = parts[0];
-        let decPart = parts.length > 1 ? dec + parts[1] : '';
-
-        // Grupowanie części całkowitej (od prawej strony)
-        // Regex szuka 3 cyfr, przed którymi stoi inna cyfra
-        let reversed = intPart.split('').reverse().join('');
-        let grouped = reversed.replace(/(\d{3})(?=\d)/g, '$1' + sep);
-        let finalInt = grouped.split('').reverse().join('');
-
-        return finalInt + decPart;
-    }
 
     // ===== OBSŁUGA KLAWISZY (GLOBALNA) =====
     Keys.onPressed: (event) => {
-        if (isStackEditing) return;
-        if (event.key === Qt.Key_F2) {
-            if (stackList.currentItem) {
-                stackList.currentItem.startEdit()
-                event.accepted = true
-            }
-            return
-        }
-        if (event.modifiers & Qt.ShiftModifier) {
-            if (event.key === Qt.Key_Up) { root.stackMoveRequest(-1); event.accepted = true; return }
-            if (event.key === Qt.Key_Down) { root.stackMoveRequest(1); event.accepted = true; return }
-        }
-
-        if (event.key === Qt.Key_Down) { keypad.focusFirst(); event.accepted = true; return }
-
-        let raw = event.text
-        if (event.key === Qt.Key_Backspace) raw = "BACK"
-        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) raw = "ENTER"
-        else if (event.key === Qt.Key_Escape) raw = "CLEAR"
-
-        if (keypad.simulatePress(raw)) {
-            event.accepted = true
-        }
+        root.keyPressed(event);
     }
 
     // ===== Style =====
@@ -169,8 +122,7 @@ Item {
             Text {
                 id: displayLabel
                 anchors.fill: parent; anchors.margins: 10
-                // WAŻNE: Wyświetlamy sformatowany tekst
-                text: displayText
+                text: root.displayText
                 font.family: "Monospace"; font.pointSize: 20
                 horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter
                 color: root.palette.text; elide: Text.ElideLeft

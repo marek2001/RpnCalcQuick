@@ -4,7 +4,7 @@
    height="48"
    version="1.1"
    id="svg29"
-   sodipodi:docname="811deafb-7730-4d50-923a-5a9039ab0067_ENTER_top_to_bottom.svg"
+   sodipodi:docname="RpnCalcQuickIcon.svg"
    inkscape:version="1.4.3 (0d15f75042, 2025-12-25)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
@@ -202,12 +202,13 @@
        id="path14" />
     <rect
        width="8"
-       x="416.57"
-       y="519.8"
+       x="416.57001"
+       y="519.79999"
        fill="url(#b)"
        rx="0"
        height="21"
-       id="rect14" />
+       id="rect14"
+       style="display:inline;fill:#bd93f9;fill-opacity:1" />
     <g
        id="display-two-row">
       <rect
@@ -216,7 +217,8 @@
          y="505.8"
          fill="url(#c)"
          height="9"
-         id="rect15" />
+         id="rect15"
+         style="fill:#bcb4a1;fill-opacity:1" />
       <!-- divider between the two text rows -->
       <path
          d="M392.57 510.3H424.57"

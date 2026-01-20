@@ -9,6 +9,7 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Quick Qml QuickControls2 Widgets)
 qt_standard_project_setup()
 if(COMMAND qt_policy)
     qt_policy(SET QTP0001 NEW)
+    qt_policy(SET QTP0004 NEW)
 endif()
 
 qt_add_executable(appRpnCalcQuick MANUAL_FINALIZATION
@@ -23,8 +24,8 @@ qt_add_qml_module(appRpnCalcQuick
         URI RpnCalc
         VERSION 1.0
         QML_FILES
-        Main.qml
-        MainForm.qml
+        qml/Main.qml
+        qml/MainForm.qml
 )
 
 target_link_libraries(appRpnCalcQuick PRIVATE
@@ -48,6 +49,6 @@ install(FILES appRpnCalcQuick.desktop
         RENAME appRpnCalcQuick.desktop
 )
 
-install(FILES appRpnCalcQuick.png
+install(FILES icons/appRpnCalcQuick.png
         DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/128x128/apps
 )

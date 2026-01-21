@@ -29,33 +29,33 @@ double RpnStackModel::parseInput(const QString &text, bool *ok)
         return 0.0;
     }
 
-    // 1. KLUCZOWE CZYSZCZENIE:
-    // QLocale::c() akceptuje TYLKO kropkę. Jeśli zostanie przecinek, parsowanie E zawiedzie.
+    // 1. CRITICAL CLEANUP:
+    // QLocale::c() accepts ONLY dots. If commas remain, E-notation parsing will fail.
     t.replace(',', '.');
     
-    // Usuwamy WSZYSTKIE spacje (zwykłe i twarde/niełamliwe), 
-    // bo "1.23 E 5" jest niepoprawne dla toDouble().
+    // Remove ALL spaces (regular and non-breaking), 
+    // because "1.23 E 5" is invalid for toDouble().
     t.remove(' ');
     t.remove(QChar(0xA0)); // U+00A0 (Non-breaking space)
 
     double v = 0.0;
     bool status = false;
 
-    // 2. Obsługa notacji naukowej "a*10^b"
+    // 2. Handle scientific notation "a*10^b"
     if (const int splitIdx = t.indexOf("*10^"); splitIdx > 0) {
         const QString aStr = t.left(splitIdx);
-        const QString bStr = t.mid(splitIdx + 4); // długość "*10^" to 4
+        const QString bStr = t.mid(splitIdx + 4); // length of "*10^" is 4
 
-        // Składamy format "mantysaEb", np. "1.23E5"
-        // Ponieważ t.replace() i t.remove() zadziałały wcześniej, 
-        // aStr ma już kropki i brak spacji.
+        // Compose format "mantissaEb", e.g. "1.23E5"
+        // Because t.replace() and t.remove() worked earlier, 
+        // aStr already has dots and no spaces.
         QString scientificStr = aStr + "E" + bStr;
         
         v = QLocale::c().toDouble(scientificStr, &status);
         
-        // ZABEZPIECZENIE (Fallback):
-        // Jeśli metoda E zawiedzie (np. dziwny format), spróbuj starej metody,
-        // żeby użytkownik nie utknął.
+        // FALLBACK:
+        // If E-notation method fails (e.g. weird format), try old method,
+        // so user doesn't get stuck.
         if (!status) {
             bool okA = false, okB = false;
             const double a = QLocale::c().toDouble(aStr, &okA);
@@ -66,7 +66,7 @@ double RpnStackModel::parseInput(const QString &text, bool *ok)
             }
         }
     } else {
-        // 3. Standardowe parsowanie (np. 123.45)
+        // 3. Standard parsing (e.g. 123.45)
         v = QLocale::c().toDouble(t, &status);
     }
     
@@ -88,7 +88,7 @@ QString RpnStackModel::formatValue(double v) const
     const QLocale loc = QLocale::system();
     const QString decimalPoint = loc.decimalPoint();
 
-    // Funkcja usuwająca końcowe zera (np. "1.500" -> "1.5")
+    // Function to remove trailing zeros (e.g. "1.500" -> "1.5")
     auto cleanZerosLocale = [&](QString s) -> QString {
         if (s.contains(decimalPoint)) {
             while (s.endsWith('0')) s.chop(1);
@@ -102,8 +102,8 @@ QString RpnStackModel::formatValue(double v) const
             int exp = static_cast<int>(std::floor(std::log10(absV)));
             double mant = v / std::pow(10.0, exp);
 
-            // [POPRAWKA] Scientific ma zawsze 1 cyfrę przed przecinkiem.
-            // Bezpieczny max po przecinku to 15 - 1 = 14.
+            // [FIX] Scientific always has 1 digit before decimal point.
+            // Safe max after decimal is 15 - 1 = 14.
             int safePrec = qBound(0, m_precision, 14);
 
             QString mantStr = cleanZerosLocale(loc.toString(mant, 'f', safePrec));
@@ -111,18 +111,18 @@ QString RpnStackModel::formatValue(double v) const
         }
         case Engineering: {
             int exp = static_cast<int>(std::floor(std::log10(absV)));
-            exp = (exp / 3) * 3; // Sprowadzamy wykładnik do wielokrotności 3
+            exp = (exp / 3) * 3; // Round exponent to multiple of 3
             double mant = v / std::pow(10.0, exp);
 
-            // [POPRAWKA] Obliczamy "budżet" cyfr dla mantysy
-            // Mantysa w trybie inżynierskim może być np. 1.2, 12.3 lub 123.4
+            // [FIX] Calculate "budget" of digits for mantissa
+            // Mantissa in engineering mode can be e.g. 1.2, 12.3 or 123.4
             double absMant = std::abs(mant);
             int intDigits = 1;
             if (absMant >= 100.0) intDigits = 3;
             else if (absMant >= 10.0) intDigits = 2;
 
-            // Ile miejsc po przecinku możemy pokazać, nie przekraczając 15 cyfr znaczących?
-            // Max 15 - (cyfry całkowite). Np. dla "123.xxx" zostaje 12 miejsc.
+            // How many decimal places can we show without exceeding 15 significant digits?
+            // Max 15 - (integer digits). E.g. for "123.xxx" we have 12 places left.
             int maxDecimals = 15 - intDigits;
             int safePrec = qBound(0, m_precision, maxDecimals);
 
@@ -131,10 +131,10 @@ QString RpnStackModel::formatValue(double v) const
         }
         case Simple:
         default: {
-            // [POPRAWKA] Jeśli liczba jest bardzo duża lub bardzo mała, wymuszamy notację naukową
+            // [FIX] If number is very large or very small, force scientific notation
             if (absV >= 1.0e15 || (absV > 0 && absV < 1.0e-15)) {
-                // Wywołujemy logikę Scientific ręcznie (żeby nie duplikować kodu, można by wydzielić funkcję,
-                // ale tutaj dla czytelności wklejam logikę Scientific)
+                // Call Scientific logic manually (to avoid code duplication, could extract to function,
+                // but here for readability we paste Scientific logic)
                 int exp = static_cast<int>(std::floor(std::log10(absV)));
                 double mant = v / std::pow(10.0, exp);
                 int safePrec = 14; 
@@ -142,7 +142,7 @@ QString RpnStackModel::formatValue(double v) const
                 return QString("%1 * 10^%2").arg(mantStr).arg(exp);
             }
 
-            // Normalny tryb - max 15 cyfr
+            // Normal mode - max 15 digits
             int safePrec = qBound(0, m_precision, 15);
             QString s = loc.toString(v, 'f', safePrec);
             s = cleanZerosLocale(s);

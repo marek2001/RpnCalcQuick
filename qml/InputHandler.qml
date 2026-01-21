@@ -15,7 +15,7 @@ QtObject {
         if (isDigit) {
             const currentDigits = text.replace(/[^0-9]/g, "").length;
             if (currentDigits >= maxDigits) {
-                validationFailed("Maksymalna precyzja (15 cyfr)");
+                validationFailed("Maximum precision (15 digits)");
                 return false;
             }
         }

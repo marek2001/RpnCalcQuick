@@ -54,12 +54,12 @@ ApplicationWindow {
     // MENU LOGIC: KDE vs OTHERS
     // =========================================================
 
-    // 1. Jeśli NIE jesteśmy na KDE, przypisujemy pasek wbudowany do okna.
-    // Jeśli to nie KDE i nie Windows -> użyj paska wbudowanego (QQC2)
-    // W przeciwnym razie (KDE lub Windows) -> null (bo użyjemy Native)
+    // 1. If we're NOT on KDE, assign the built-in menu bar to the window.
+    // If it's not KDE and not Windows -> use built-in bar (QQC2)
+    // Otherwise (KDE or Windows) -> null (because we'll use Native)
     menuBar: (!rpn.isKde && Qt.platform.os !== "windows") ? inWindowMenuBar : null
 
-    // Definicja paska wbudowanego (QQC2 - dla Cinnamon, GNOME etc.)
+    // Definition of built-in bar (QQC2 - for Cinnamon, GNOME etc.)
     MenuBar {
         id: inWindowMenuBar
         Menu {
@@ -92,7 +92,7 @@ ApplicationWindow {
         }
     }
 
-    // 2. Jeśli JESTEŚMY na KDE, ładujemy natywny pasek (Global Menu).
+    // 2. If we ARE on KDE, load the native menu bar (Global Menu).
     Loader {
         active: rpn.isKde || Qt.platform.os === "windows"
         sourceComponent: Native.MenuBar {
@@ -135,7 +135,7 @@ ApplicationWindow {
         buttons: Native.MessageDialog.Ok
     }
 
-    // =========================================================
+
     MainForm {
         id: ui
         anchors.fill: parent
@@ -243,9 +243,9 @@ ApplicationWindow {
     
     readonly property bool allowGlobalTyping: !ui.isStackEditing
 
-    // --- GLOBALNE SKRÓTY KLAWISZOWE ---
+    // --- GLOBAL KEYBOARD SHORTCUTS ---
 
-    // 1. Nawigacja stosem
+    // 1. Stack navigation
     Shortcut { sequence: "Shift+Up";   context: Qt.ApplicationShortcut;
         enabled: !ui.isStackEditing && ui.stackCurrentIndex > 0; onActivated: win.moveSelectedStack(-1) }
     Shortcut { sequence: "Shift+Down"; context: Qt.ApplicationShortcut;
@@ -274,7 +274,7 @@ ApplicationWindow {
         onActivated: ui.simulatePress("BACK")
     }
 
-    // 4. Cyfry 0-9
+    // 4. Digits 0-9
     Repeater {
         model: 10
         delegate: Item {
@@ -288,7 +288,7 @@ ApplicationWindow {
         }
     }
 
-    // 5. Separatory dziesiętne
+    // 5. Decimal separators
     Shortcut { sequence: "."; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
         onActivated: ui.simulatePress(".") }
     Shortcut { sequence: ","; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
@@ -298,7 +298,7 @@ ApplicationWindow {
     Shortcut { sequences: [StandardKey.Undo]; context: Qt.ApplicationShortcut; onActivated: rpn.undo() }
     Shortcut { sequences: [StandardKey.Redo]; context: Qt.ApplicationShortcut; onActivated: rpn.redo() }
 
-    // 7. Operatory (+, -, *, /)
+    // 7. Operators (+, -, *, /)
     Shortcut { sequence: "="; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
         onActivated: ui.simulatePress("+") }
     Shortcut { sequence: "+"; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
@@ -322,7 +322,7 @@ ApplicationWindow {
     Shortcut { sequence: "Subtract"; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
         onActivated: ui.simulatePress("-") }
 
-    // 8. Litery / Funkcje
+    // 8. Letters / Functions
     Shortcut { sequence: "s"; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;
         onActivated: ui.simulatePress("s") }
     Shortcut { sequence: "c"; context: Qt.ApplicationShortcut; enabled: win.allowGlobalTyping;

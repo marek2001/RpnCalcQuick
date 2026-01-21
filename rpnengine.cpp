@@ -20,7 +20,7 @@ void RpnEngine::appendHistoryLine(const QString &line)
     if (m_historyText.isEmpty()) {
         m_historyText = line;
     } else {
-        // Najnowsze na górze
+        // Newest on top
         m_historyText = line + '\n' + m_historyText;
     }
     emit historyTextChanged();
@@ -44,7 +44,7 @@ void RpnEngine::error(const QString &msg)
 bool RpnEngine::require(int n)
 {
     if (!m_model.has(n)) {
-        error(QString("Za mało argumentów na stosie (potrzeba %1).").arg(n));
+        error(QString("Not enough arguments on stack (need %1).").arg(n));
         return false;
     }
     return true;
@@ -63,12 +63,12 @@ bool RpnEngine::pop2(double &a, double &b)
 bool RpnEngine::enter(const QString &text)
 {
     bool ok = false;
-    // Używamy zunifikowanego parsera
+    // Use unified parser
     const double v = RpnStackModel::parseInput(text, &ok);
 
     if (!ok) {
         if (!text.trimmed().isEmpty()) {
-            error("Nieprawidłowa liczba.");
+            error("Invalid number.");
         }
         return false;
     }
@@ -115,7 +115,7 @@ void RpnEngine::div()
         m_model.push(a); m_model.push(b);
         if (!m_undoStack.isEmpty()) m_undoStack.removeLast();
         emit canUndoChanged();
-        error("Dzielenie przez zero.");
+        error("Division by zero.");
         return;
     }
     m_model.push(a / b);
@@ -142,7 +142,7 @@ void RpnEngine::root()
         m_model.push(base); m_model.push(degree);
         if (!m_undoStack.isEmpty()) m_undoStack.removeLast();
         emit canUndoChanged();
-        error("Stopień pierwiastka 0.");
+        error("Root degree cannot be 0.");
         return;
     }
     double result = std::pow(base, 1.0 / degree);
@@ -150,7 +150,7 @@ void RpnEngine::root()
         m_model.push(base); m_model.push(degree);
         if (!m_undoStack.isEmpty()) m_undoStack.removeLast();
         emit canUndoChanged();
-        error("Błędny wynik pierwiastkowania.");
+        error("Invalid root result.");
         return;
     }
 
@@ -199,7 +199,7 @@ void RpnEngine::reciprocal()
         m_model.push(x);
         if (!m_undoStack.isEmpty()) m_undoStack.removeLast();
         emit canUndoChanged();
-        error("Dzielenie przez zero (1/x).");
+        error("Division by zero (1/x).");
         return;
     }
     m_model.push(1.0 / x);
@@ -208,7 +208,7 @@ void RpnEngine::reciprocal()
 
 void RpnEngine::dup()
 {
-    if (!m_model.has(1)) { error("Pusty stos (dup)."); return; }
+    if (!m_model.has(1)) { error("Empty stack (dup)."); return; }
     saveState();
     m_model.dupTop();
     appendHistoryLine(QString("dup -> %1").arg(topAsString()));
@@ -216,7 +216,7 @@ void RpnEngine::dup()
 
 void RpnEngine::drop()
 {
-    if (!m_model.has(1)) { error("Pusty stos (drop)."); return; }
+    if (!m_model.has(1)) { error("Empty stack (drop)."); return; }
     saveState();
     m_model.dropTop();
     appendHistoryLine("drop");
@@ -246,34 +246,32 @@ void RpnEngine::pushE()
 
 bool RpnEngine::modifyStackValue(int row, const QString &text)
 {
-    // 1. Pobieramy STARĄ wartość (old value)
+    // 1. Get OLD value
     QModelIndex idx = m_model.index(row);
     QString oldValue = m_model.data(idx, RpnStackModel::ValueRole).toString();
 
-    // 2. Zapisujemy stan Undo
+    // 2. Save Undo state
     saveState();
 
-    // 3. Próbujemy zmienić wartość
+    // 3. Try to change value
     bool success = m_model.setValueAt(row, text);
 
     if (success) {
-        // --- SUKCES ---
+        // --- SUCCESS ---
         
-        // Czyścimy Redo
+        // Clear Redo
         m_redoStack.clear();
         emit canUndoChanged();
         emit canRedoChanged();
 
-        // 4. Pobieramy NOWĄ wartość (new value)
+        // 4. Get NEW value
         QString newValue = m_model.data(idx, RpnStackModel::ValueRole).toString();
 
-        // 5. Używamy tej samej funkcji co reszta operacji (appendHistoryLine)
-        // Dzięki temu wpis trafi na GÓRĘ listy (Top of the list)
+        // 5. Use the same function as other operations (appendHistoryLine)
+        // This ensures the entry goes to the TOP of the list
         appendHistoryLine(QStringLiteral("%1 edit -> %2").arg(oldValue, newValue));
 
     } else {
-        // --- BŁĄD ---
-        // Cofamy zapisanie stanu
         if (!m_undoStack.isEmpty()) {
             m_undoStack.pop_back(); 
         }
@@ -371,8 +369,8 @@ void RpnEngine::loadSessionState()
 
 bool RpnEngine::isKde() const
 {
-    // Pobieramy zmienną środowiskową Linuxa
+    // Get Linux environment variable
     QByteArray desktop = qgetenv("XDG_CURRENT_DESKTOP");
-    // Sprawdzamy czy zawiera "KDE" (np. "KDE", "Ubuntu:KDE", "KDE Plasma")
+    // Check if contains "KDE" (e.g. "KDE", "Ubuntu:KDE", "KDE Plasma")
     return desktop.contains("KDE");
 }

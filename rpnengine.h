@@ -32,26 +32,26 @@ public:
 
     Q_INVOKABLE bool enter(const QString &text);
 
-    // Binarne
+    // Binary operations
     Q_INVOKABLE void add();
     Q_INVOKABLE void sub();
     Q_INVOKABLE void mul();
     Q_INVOKABLE void div();
     Q_INVOKABLE void pow();
-    Q_INVOKABLE void root(); // Nowość: pierwiastek n-tego stopnia
+    Q_INVOKABLE void root(); // New: n-th root
 
-    // Unarne / Funkcje
+    // Unary operations / Functions
     Q_INVOKABLE void sin();
     Q_INVOKABLE void cos();
     Q_INVOKABLE void neg();
-    Q_INVOKABLE void reciprocal(); // Nowość: 1/x
+    Q_INVOKABLE void reciprocal(); // New: 1/x
 
     // Stack ops
     Q_INVOKABLE void dup();
     Q_INVOKABLE void drop();
     Q_INVOKABLE void clearAll();
 
-    // Const
+    // Constants
     Q_INVOKABLE void pushPi();
     Q_INVOKABLE void pushE();
 

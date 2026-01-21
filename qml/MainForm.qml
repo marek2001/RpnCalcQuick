@@ -52,7 +52,7 @@ Item {
     }
 
 
-    // ===== OBSŁUGA KLAWISZY (GLOBALNA) =====
+    // ===== KEYBOARD HANDLING (GLOBAL) =====
     Keys.onPressed: (event) => {
         root.keyPressed(event);
     }
@@ -75,7 +75,7 @@ Item {
         Layout.minimumWidth: 55
         Layout.preferredWidth: 55
 
-        // Pobieramy separator z roota, jeśli label to DECIMAL
+        // Get separator from root, if label is DECIMAL
         text: (key && key.label === "DECIMAL") ? root.decimalSeparator : ((key && key.label) ? key.label : "")
 
         Timer { id: releaseTimer; interval: 100; onTriggered: btn.down = false }
@@ -110,9 +110,9 @@ Item {
 
     // ===== Layout =====
     ColumnLayout {
-        anchors.fill: parent; spacing: 2
+        anchors.fill: parent; spacing: 0
 
-        // EKRAN LCD
+        // LCD SCREEN
         Rectangle {
             Layout.fillWidth: true; Layout.preferredHeight: 50
             color: root.palette.base; radius: 8
@@ -214,7 +214,7 @@ Item {
                                 Rectangle { id: vSep; width: 1; anchors.left: idxText.right; anchors.leftMargin: 12; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.topMargin: 4; anchors.bottomMargin: 4; color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.mid; opacity: 0.5 }
                                 Text { id: valueText; anchors.left: vSep.right; anchors.leftMargin: 12; anchors.right: removeBtn.left; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter; text: model.value; visible: !rowItem.editing; color: rowItem.isSelected ? stackFrame.palette.highlightedText : stackFrame.palette.text; font.family: "Monospace"; elide: Text.ElideLeft }
 
-                                // Edycja na stosie
+                                // Stack editing
                                 TextField {
                                     id: editField
                                     anchors.left: vSep.right; anchors.leftMargin: 12
@@ -226,21 +226,21 @@ Item {
                                     selectByMouse: true
                                     Keys.priority: Keys.BeforeItem
 
-                                    // [NOWOŚĆ] Zmienna do śledzenia poprzedniej długości
+                                    // [NEW] Variable to track previous length
                                     property string previousText: ""
 
                                     onTextEdited: {
-                                        // 1. Jeśli tekst jest KRÓTSZY niż wcześniej (user kasuje), ZAWSZE pozwalamy.
-                                        // Dzięki temu można skrócić wynik z 17 cyfr do 15 i dopiero edytować.
+                                        // 1. If text is SHORTER than before (user deletes), ALWAYS allow.
+                                        // This lets you shorten result from 17 digits to 15 and then edit.
                                         if (text.length < previousText.length) {
                                             previousText = text
                                             return
                                         }
 
-                                        // 2. Jeśli tekst się wydłużył lub zmienił bez zmiany długości, sprawdzamy limit.
+                                        // 2. If text got longer or changed without length change, check limit.
                                         let contentToCheck = text
 
-                                        // Logika dla notacji naukowej (ignorujemy wykładnik)
+                                        // Logic for scientific notation (ignore exponent)
                                         if (text.indexOf("*") >= 0) {
                                             contentToCheck = text.split("*")[0]
                                         } else if (text.toLowerCase().indexOf("e") >= 0) {
@@ -251,9 +251,9 @@ Item {
 
                                         if (digits > 15) {
                                             undo()
-                                            root.showToast("Maksymalna precyzja (15 cyfr)")
+                                            root.showToast("Maximum precision (15 digits)")
                                         } else {
-                                            // Akceptujemy zmianę
+                                            // Accept change
                                             previousText = text
                                         }
                                     }
@@ -270,7 +270,7 @@ Item {
                                             rowItem.editing = false
                                             root.forceActiveFocus()
                                         } else {
-                                            toast.show("Nieprawidłowa liczba")
+                                            toast.show("Invalid number")
                                             forceActiveFocus()
                                             selectAll()
                                         }

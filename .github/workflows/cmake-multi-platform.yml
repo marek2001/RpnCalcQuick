@@ -21,12 +21,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Qt
-        uses: jurplel/install-qt-action@v3
+        uses: jurplel/install-qt-action@v4
         with:
-          version: '6.9.0'
+          version: '6.8.1'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2019_64'
           modules: 'qt5compat qtshadertools'
           cache: true
-          cache-key-prefix: 'install-qt-action'
 
       - name: Configure & Build
         run: |

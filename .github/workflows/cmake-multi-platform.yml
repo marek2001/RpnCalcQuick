@@ -34,7 +34,8 @@ jobs:
         shell: bash
         run: |
           pip install 'aqtinstall>=3.1,<4.0'
-          aqt install-qt windows desktop 6.8.0 win64_msvc2019_64 -m qt5compat --outputdir D:/a/RpnCalcQuick/Qt
+          # Use install-module instead of install-qt to add modules to existing installation
+          aqt install-module windows desktop 6.8.0 win64_msvc2019_64 -m qt5compat --outputdir D:/a/RpnCalcQuick/Qt
 
       - name: Configure & Build
         run: |

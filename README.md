@@ -1,5 +1,7 @@
 # RpnCalcQuick - RPN Calculator
 
+[![Version](https://img.shields.io/badge/version-0.9-blue.svg)](https://github.com/marek2001/RpnCalcQuick)
+
 RpnCalcQuick is a modern Reverse Polish Notation (RPN) calculator built with **C++20** and **Qt 6**. It features a robust Model-View-ViewModel (MVVM) architecture, combining high-performance C++ core logic with a responsive Qt Quick (QML) interface.
 
 Designed to be lightweight and keyboard-friendly, it fits perfectly on your desktop alongside other windows.

@@ -18,6 +18,7 @@ int main(int argc, char *argv[])
     QGuiApplication::setDesktopFileName("appRpnCalcQuick");
     QCoreApplication::setOrganizationName("marek2001");
     QCoreApplication::setApplicationName("RpnCalcQuick");
+    QCoreApplication::setApplicationVersion("0.9.0");
     qmlRegisterType<RpnEngine>("RpnCalc.Backend", 0, 8, "RpnEngine");
 
     QQmlApplicationEngine engine;

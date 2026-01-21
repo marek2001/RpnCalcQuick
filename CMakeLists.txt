@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(RpnCalcQuick LANGUAGES CXX)
+project(RpnCalcQuick VERSION 0.9.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -29,7 +29,7 @@ qt_add_executable(appRpnCalcQuick MANUAL_FINALIZATION
 
 qt_add_qml_module(appRpnCalcQuick
         URI RpnCalc
-        VERSION 1.0
+        VERSION 0.9
         QML_FILES
         qml/Main.qml
         qml/MainForm.qml

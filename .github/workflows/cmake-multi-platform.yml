@@ -35,7 +35,7 @@ jobs:
         run: |
           pip install 'aqtinstall>=3.1,<4.0'
           # Use install-module instead of install-qt to add modules to existing installation
-          aqt install-module windows desktop 6.8.0 win64_msvc2019_64 -m qt5compat --outputdir D:/a/RpnCalcQuick/Qt
+          python -m aqt install-qt windows desktop 6.8.0 win64_msvc2022_64 --outputdir D:\a\RpnCalcQuick\Qt
 
       - name: Configure & Build
         run: |

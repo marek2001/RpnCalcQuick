@@ -12,7 +12,7 @@ env:
 
 jobs:
   # ==========================================
-  # 1. WINDOWS (MSVC + Qt 6.4)
+  # 1. WINDOWS
   # ==========================================
   windows:
     name: 🪟 Windows (Exe/Zip)
@@ -23,7 +23,7 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@v3
         with:
-          version: '6.6.0'
+          version: '6.9.0'
           modules: 'qt5compat qtshadertools'
           cache: true
           cache-key-prefix: 'install-qt-action'
@@ -39,17 +39,17 @@ jobs:
           mkdir dist
           copy build\${{ env.BUILD_TYPE }}\app${{ env.APP_NAME }}.exe dist\
           
-          :: Uruchomienie windeployqt
+          :: Run windeployqt
           windeployqt --qmldir . --no-translations --compiler-runtime dist\app${{ env.APP_NAME }}.exe
           
-          :: --- CZYSZCZENIE ZBĘDNYCH KATALOGÓW ---
-          :: Usuwamy obsługę sieci (SSL) i baz danych, bo aplikacja ich nie używa
+          :: --- CLEANUP OF UNNECESSARY FOLDERS ---
+          :: Remove network (SSL) and database support, as the app doesn't use them
           if exist dist\tls rmdir /s /q dist\tls
           if exist dist\sqldrivers rmdir /s /q dist\sqldrivers
           if exist dist\networkinformation rmdir /s /q dist\networkinformation
           :: ---------------------------------------
 
-          :: Pakowanie do ZIP
+          :: Package to ZIP
           7z a ${{ env.APP_NAME }}-Windows.zip .\dist\*
 
       - name: Upload Artifact
@@ -99,7 +99,7 @@ jobs:
       - name: Install Dependencies
         run: |
           pacman -Sy --noconfirm archlinux-keyring && pacman -Su --noconfirm
-          # file, wget, patchelf są niezbędne dla linuxdeploy
+          # file, wget, patchelf are required for linuxdeploy
           pacman -S --noconfirm base-devel cmake git wget file patchelf \
             qt6-base qt6-declarative qt6-5compat qt6-shadertools qt6-wayland
 
@@ -107,15 +107,15 @@ jobs:
 
       - name: Build & Install to AppDir
         run: |
-          # Konfiguracja i budowa
+          # Configuration and build
           cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DCMAKE_INSTALL_PREFIX=/usr
           cmake --build build -j$(nproc)
           
-          # ZMIANA: Instalacja do AppDir używając pełnej ścieżki ($PWD)
-          # Dzięki temu pliki trafią do /home/runner/work/.../AppDir, a nie do ./build/AppDir
+          # CHANGE: Install to AppDir using full path ($PWD)
+          # This ensures files go to /home/runner/work/.../AppDir, not ./build/AppDir
           DESTDIR="$PWD/AppDir" cmake --install build
 
-          # Debugging (opcjonalnie): Pokaż co dokładnie się zainstalowało, żeby mieć pewność
+          # Debugging (optional): Show what exactly was installed, to be sure
           echo "=== Content of AppDir ==="
           find AppDir -maxdepth 4
 

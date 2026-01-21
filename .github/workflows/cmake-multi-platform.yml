@@ -27,8 +27,14 @@ jobs:
           host: 'windows'
           target: 'desktop'
           arch: 'win64_msvc2019_64'
-          modules: 'qt5compat qtshadertools'
           cache: true
+          # Don't install modules here - will add them separately
+
+      - name: Install Qt Addons (Qt5Compat)
+        shell: bash
+        run: |
+          pip install 'aqtinstall>=3.1,<4.0'
+          aqt install-qt windows desktop 6.8.0 win64_msvc2019_64 -m qt5compat --outputdir D:/a/RpnCalcQuick/Qt
 
       - name: Configure & Build
         run: |

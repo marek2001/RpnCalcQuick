@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationName("marek2001");
     QCoreApplication::setApplicationName("RpnCalcQuick");
     QCoreApplication::setApplicationVersion("0.9.0");
-    qmlRegisterType<RpnEngine>("RpnCalc.Backend", 0, 8, "RpnEngine");
+    qmlRegisterType<RpnEngine>("RpnCalc.Backend", 0, 9, "RpnEngine");
 
     QQmlApplicationEngine engine;
     // engine.load(QUrl(QStringLiteral("qrc:/qt/qml/RpnCalc/Main.qml")));
